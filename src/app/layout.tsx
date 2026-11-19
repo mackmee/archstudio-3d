@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "ArchStudio 3D | 2D-to-3D Home Interior & Construction Estimator",
@@ -12,9 +13,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark h-full antialiased">
-      <body className="h-full flex flex-col bg-[#090d16] text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
-        {children}
+    <html lang="uz" className="dark h-full antialiased" suppressHydrationWarning>
+      <body className="h-full flex flex-col font-sans selection:bg-indigo-500 selection:text-white antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

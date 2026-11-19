@@ -2,6 +2,8 @@
 
 import React, { useRef } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
+import { usePreferencesStore } from '@/store/usePreferencesStore';
+import { getTranslation } from '@/lib/i18n';
 import { ToolType } from '@/types/floorplan';
 import {
   MousePointer,
@@ -18,7 +20,8 @@ import {
 
 interface ToolItem {
   id: ToolType;
-  label: string;
+  labelKey: 'toolSelect' | 'toolPan' | 'toolCalibrate' | 'toolWall' | 'toolDoor' | 'toolWindow' | 'toolRoom';
+  shortLabel: { uz: string; ru: string };
   shortcut: string;
   icon: React.ComponentType<{ className?: string }>;
 }
@@ -34,16 +37,17 @@ export const LeftToolbar: React.FC = () => {
     setBackgroundImage,
   } = useFloorplanStore();
 
+  const { language } = usePreferencesStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const mainTools: ToolItem[] = [
-    { id: 'select', label: 'Select & Edit', shortcut: 'V', icon: MousePointer },
-    { id: 'pan', label: 'Pan Canvas', shortcut: 'H / Space', icon: Hand },
-    { id: 'calibrate', label: 'Calibrate Scale', shortcut: 'C', icon: Ruler },
-    { id: 'wall', label: 'Draw Wall', shortcut: 'W', icon: Square },
-    { id: 'door', label: 'Add Door', shortcut: 'D', icon: DoorOpen },
-    { id: 'window', label: 'Add Window', shortcut: 'N', icon: AppWindow },
-    { id: 'room', label: 'Room Label', shortcut: 'R', icon: Tag },
+    { id: 'select', labelKey: 'toolSelect', shortLabel: { uz: 'Tanlash', ru: 'Выбор' }, shortcut: 'V', icon: MousePointer },
+    { id: 'pan', labelKey: 'toolPan', shortLabel: { uz: 'Ko‘chirish', ru: 'Сдвиг' }, shortcut: 'H / Space', icon: Hand },
+    { id: 'calibrate', labelKey: 'toolCalibrate', shortLabel: { uz: 'Masshtab', ru: 'Масштаб' }, shortcut: 'C', icon: Ruler },
+    { id: 'wall', labelKey: 'toolWall', shortLabel: { uz: 'Devor', ru: 'Стена' }, shortcut: 'W', icon: Square },
+    { id: 'door', labelKey: 'toolDoor', shortLabel: { uz: 'Eshik', ru: 'Дверь' }, shortcut: 'D', icon: DoorOpen },
+    { id: 'window', labelKey: 'toolWindow', shortLabel: { uz: 'Deraza', ru: 'Окно' }, shortcut: 'G', icon: AppWindow },
+    { id: 'room', labelKey: 'toolRoom', shortLabel: { uz: 'Xona', ru: 'Комната' }, shortcut: 'R', icon: Tag },
   ];
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,18 +68,16 @@ export const LeftToolbar: React.FC = () => {
           x: 0,
           y: 0,
         });
-        // Switch to calibrate tool to encourage scale calibration
         setActiveTool('calibrate');
       };
       img.src = dataUrl;
     };
     reader.readAsDataURL(file);
-    // Reset file input value so re-uploading same file works
     e.target.value = '';
   };
 
   return (
-    <aside className="w-16 border-r border-slate-800 bg-slate-900/90 backdrop-blur-md flex flex-col items-center py-3 z-20 gap-1 select-none">
+    <aside className="w-16 border-r border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 backdrop-blur-md flex flex-col items-center py-3 z-20 gap-1 select-none transition-colors duration-200 shadow-xs">
       {/* Hidden File Input for Blueprint Upload */}
       <input
         ref={fileInputRef}
@@ -90,25 +92,27 @@ export const LeftToolbar: React.FC = () => {
         {mainTools.map((tool) => {
           const Icon = tool.icon;
           const isActive = activeTool === tool.id;
+          const label = getTranslation(language, tool.labelKey);
+
           return (
             <button
               key={tool.id}
               onClick={() => setActiveTool(tool.id)}
-              title={`${tool.label} (${tool.shortcut})`}
+              title={`${label} (${tool.shortcut})`}
               className={`group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-150 ${
                 isActive
-                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-xs shadow-cyan-500/20'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 border border-transparent'
+                  ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/40 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent'
               }`}
             >
               <Icon className="w-5 h-5" />
               <span className="text-[9px] mt-0.5 font-medium leading-none truncate max-w-full">
-                {tool.label.split(' ')[0]}
+                {tool.shortLabel[language]}
               </span>
 
               {/* Tooltip on hover */}
-              <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-950 border border-slate-700/80 rounded-md text-xs text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
-                <span className="font-semibold">{tool.label}</span>
+              <div className="absolute left-full ml-2 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700/80 rounded-md text-xs text-slate-900 dark:text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+                <span className="font-semibold">{label}</span>
                 <span className="text-slate-400 ml-1.5 text-[10px]">[{tool.shortcut}]</span>
               </div>
             </button>
@@ -120,39 +124,41 @@ export const LeftToolbar: React.FC = () => {
       <div className="w-full px-2 mt-1">
         <button
           onClick={() => fileInputRef.current?.click()}
-          title="Upload Blueprint Image (JPG/PNG)"
-          className="group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/30 border border-transparent transition-all"
+          title={getTranslation(language, 'blueprintTitle')}
+          className="group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl text-slate-500 dark:text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 border border-transparent transition-all"
         >
           <Upload className="w-5 h-5" />
-          <span className="text-[9px] mt-0.5 font-medium leading-none">Upload</span>
+          <span className="text-[9px] mt-0.5 font-medium leading-none">
+            {language === 'uz' ? 'Yuklash' : 'Файл'}
+          </span>
 
-          <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-950 border border-slate-700/80 rounded-md text-xs text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
-            <span className="font-semibold">Upload Blueprint</span>
-            <span className="text-amber-400 block text-[10px]">JPG, PNG floorplan</span>
+          <div className="absolute left-full ml-2 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700/80 rounded-md text-xs text-slate-900 dark:text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+            <span className="font-semibold">{getTranslation(language, 'blueprintTitle')}</span>
+            <span className="text-amber-500 block text-[10px]">JPG, PNG</span>
           </div>
         </button>
       </div>
 
-      <div className="w-8 h-px bg-slate-800 my-1" />
+      <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
       {/* Architectural Snapping & Display Toggles */}
       <div className="flex flex-col gap-1 w-full px-2 mt-auto">
         {/* Ortho Snap Toggle */}
         <button
           onClick={toggleOrthoSnap}
-          title={`Ortho Snap: ${isOrthoSnapEnabled ? 'ON (0°, 45°, 90°)' : 'OFF'}`}
+          title={`${getTranslation(language, 'orthoToggle')}: ${isOrthoSnapEnabled ? 'ON' : 'OFF'}`}
           className={`group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl transition ${
             isOrthoSnapEnabled
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-xs'
-              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/80 border border-transparent'
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 shadow-xs'
+              : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent'
           }`}
         >
           <Magnet className="w-5 h-5" />
           <span className="text-[9px] mt-0.5 font-medium leading-none">Ortho</span>
 
-          <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-950 border border-slate-700/80 rounded-md text-xs text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
-            <span className="font-semibold">Ortho Snap (0°/45°/90°)</span>
-            <span className={`block text-[10px] ${isOrthoSnapEnabled ? 'text-emerald-400' : 'text-slate-400'}`}>
+          <div className="absolute left-full ml-2 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700/80 rounded-md text-xs text-slate-900 dark:text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+            <span className="font-semibold">{getTranslation(language, 'orthoToggle')} (0°/45°/90°)</span>
+            <span className={`block text-[10px] ${isOrthoSnapEnabled ? 'text-emerald-500' : 'text-slate-400'}`}>
               {isOrthoSnapEnabled ? 'Active' : 'Disabled'}
             </span>
           </div>
@@ -161,18 +167,20 @@ export const LeftToolbar: React.FC = () => {
         {/* Grid Toggle */}
         <button
           onClick={toggleShowGrid}
-          title={`Architectural Grid: ${showGrid ? 'ON' : 'OFF'} (G)`}
+          title={`${getTranslation(language, 'gridToggle')}: ${showGrid ? 'ON' : 'OFF'} (G)`}
           className={`group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl transition ${
             showGrid
-              ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-xs'
-              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/80 border border-transparent'
+              ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/40 shadow-xs'
+              : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent'
           }`}
         >
           <Grid className="w-5 h-5" />
-          <span className="text-[9px] mt-0.5 font-medium leading-none">Grid</span>
+          <span className="text-[9px] mt-0.5 font-medium leading-none">
+            {language === 'uz' ? 'To‘r' : 'Сетка'}
+          </span>
 
-          <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-950 border border-slate-700/80 rounded-md text-xs text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
-            <span className="font-semibold">CAD Grid (1m / 0.5m)</span>
+          <div className="absolute left-full ml-2 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700/80 rounded-md text-xs text-slate-900 dark:text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+            <span className="font-semibold">{getTranslation(language, 'gridToggle')} (1m / 0.5m)</span>
             <span className="text-slate-400 ml-1.5 text-[10px]">[G]</span>
           </div>
         </button>

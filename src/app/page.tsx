@@ -1,69 +1,118 @@
-import Image from "next/image";
+'use client';
+
+import React from 'react';
+import dynamic from 'next/dynamic';
+import { useFloorplanStore } from '@/store/useFloorplanStore';
+import { TopHeader } from '@/components/layout/TopHeader';
+import { LeftToolbar } from '@/components/layout/LeftToolbar';
+import { PropertiesPanel } from '@/components/layout/PropertiesPanel';
+import { StatusBar } from '@/components/layout/StatusBar';
+import { CalibrationModal } from '@/components/editor2d/CalibrationModal';
+import { ProjectReadinessCard } from '@/components/editor2d/ProjectReadinessCard';
+
+// Dynamically import Onboarding View with ssr: false
+const ProjectSetupView = dynamic(
+  () => import('@/components/onboarding/ProjectSetupView').then((mod) => mod.ProjectSetupView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span>Loading Project Setup Studio...</span>
+        </div>
+      </div>
+    ),
+  }
+);
+
+// Dynamically import 2D Canvas with ssr: false
+const FloorplanCanvas = dynamic(
+  () =>
+    import('@/components/editor2d/FloorplanCanvas').then((mod) => mod.FloorplanCanvas),
+  { ssr: false }
+);
+
+// Dynamically import 3D Scene Viewport with ssr: false
+const Scene3D = dynamic(
+  () => import('@/components/viewer3d/Scene3D').then((mod) => mod.Scene3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span>Initializing 3D Architectural Scene...</span>
+        </div>
+      </div>
+    ),
+  }
+);
+
+// Dynamically import Construction Estimator with ssr: false
+const EstimatorView = dynamic(
+  () => import('@/components/estimator/EstimatorView').then((mod) => mod.EstimatorView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span>Generating Construction Estimate & BOM...</span>
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default function Home() {
+  const { currentMode } = useFloorplanStore();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="flex flex-col h-screen w-screen overflow-hidden bg-[#090d16] font-sans text-slate-100">
+      {/* Top Application Header with 4-Step Stepper */}
+      <TopHeader />
+
+      {/* Main Studio Workspace */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {currentMode === 'onboarding' ? (
+          /* Step 1: Client Onboarding & Blueprint Setup */
+          <ProjectSetupView />
+        ) : currentMode === '2d' ? (
+          /* Step 2: 2D Floorplan CAD Editor & Readiness Validation */
+          <>
+            {/* Left Vertical CAD Toolbar */}
+            <LeftToolbar />
+
+            {/* Center Workspace (Interactive 2D Canvas) */}
+            <section className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#090d16]">
+              <div className="flex-1 relative w-full h-full">
+                <FloorplanCanvas />
+                {/* Scale Calibration Dialog */}
+                <CalibrationModal />
+                {/* Live Completeness Checklist & 3D Gate */}
+                <ProjectReadinessCard />
+              </div>
+
+              {/* Bottom Status Bar */}
+              <StatusBar />
+            </section>
+
+            {/* Right Inspector & Global Properties Panel */}
+            <PropertiesPanel />
+          </>
+        ) : currentMode === '3d' ? (
+          /* Step 3: Interactive 3D Architectural Visualizer */
+          <section className="flex-1 h-full w-full relative overflow-hidden">
+            <Scene3D />
+          </section>
+        ) : (
+          /* Step 4: Smart Construction Estimator & BOM Dashboard */
+          <section className="flex-1 h-full w-full relative overflow-hidden flex flex-col">
+            <EstimatorView />
+          </section>
+        )}
+      </div>
+    </main>
   );
 }

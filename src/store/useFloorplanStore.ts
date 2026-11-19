@@ -1,0 +1,869 @@
+import { create } from 'zustand';
+import {
+  BackgroundImage,
+  CalibrationState,
+  EditorMode,
+  Opening,
+  PlacedFurniture,
+  Point2D,
+  Room,
+  Selected3DTarget,
+  ToolType,
+  View3DSettings,
+  Wall,
+  ProjectMetadata,
+  ReadinessChecklist,
+} from '@/types/floorplan';
+import { distance } from '@/lib/geometry';
+import {
+  DEFAULT_FLOOR_MATERIAL_ID,
+  DEFAULT_CEILING_MATERIAL_ID,
+  DEFAULT_WALL_MATERIAL_ID,
+} from '@/data/materials';
+
+interface ProjectState {
+  projectName: string;
+  targetAreaSqm?: number;
+  numRooms?: number;
+  isCalibrated: boolean;
+  pixelsPerMeter: number;
+  ceilingHeight: number;
+  backgroundImage: BackgroundImage | null;
+  walls: Wall[];
+  openings: Opening[];
+  rooms: Room[];
+  furniture: PlacedFurniture[];
+  floorMaterialId: string;
+  ceilingMaterialId: string;
+  // Estimator overrides & settings
+  customMaterialPrices: Record<string, number>;
+  customFurniturePrices: Record<string, number>;
+  wasteFactor: number;
+  includeLabor: boolean;
+  laborRatePerSqm: number;
+}
+
+interface FloorplanStore extends ProjectState {
+  // App Mode (Onboarding / 2D / 3D / Estimator)
+  currentMode: EditorMode;
+  setCurrentMode: (mode: EditorMode) => void;
+
+  // Project Metadata Actions
+  setProjectMetadata: (partial: Partial<ProjectMetadata>) => void;
+  getReadinessChecklist: () => ReadinessChecklist;
+
+  // Estimator Actions
+  setCustomMaterialPrice: (materialId: string, price: number) => void;
+  setCustomFurniturePrice: (catalogId: string, price: number) => void;
+  setWasteFactor: (factor: number) => void;
+  setIncludeLabor: (include: boolean) => void;
+  setLaborRatePerSqm: (rate: number) => void;
+  resetPriceOverrides: () => void;
+
+  // 3D View Settings & Selection
+  view3dSettings: View3DSettings;
+  selected3DTarget: Selected3DTarget | null;
+  isTransformDragging: boolean;
+  setIsTransformDragging: (isDragging: boolean) => void;
+  setView3dSettings: (partial: Partial<View3DSettings>) => void;
+  toggleCeiling3D: () => void;
+  toggleRoomLabels3D: () => void;
+  setCameraMode3D: (mode: 'orbit' | 'walkthrough') => void;
+  setSelected3DTarget: (target: Selected3DTarget | null) => void;
+
+  // Furniture Actions
+  addFurniture: (item: Omit<PlacedFurniture, 'id'>) => string;
+  updateFurniture: (id: string, partial: Partial<PlacedFurniture>) => void;
+  removeFurniture: (id: string) => void;
+  duplicateFurniture: (id: string) => string | null;
+
+  // Materials Actions
+  setWallMaterial: (wallId: string, materialId: string, side: 'left' | 'right' | 'both') => void;
+  applyMaterialToAllWalls: (materialId: string) => void;
+  setFloorMaterial: (materialId: string) => void;
+  setCeilingMaterial: (materialId: string) => void;
+
+  // Active UI & Editor State
+  activeTool: ToolType;
+  selectedId: string | null;
+  isOrthoSnapEnabled: boolean;
+  showGrid: boolean;
+  calibrationState: CalibrationState;
+
+  // History Stack
+  historyPast: ProjectState[];
+  historyFuture: ProjectState[];
+
+  // Actions
+  setActiveTool: (tool: ToolType) => void;
+  setSelectedId: (id: string | null) => void;
+  setPixelsPerMeter: (ppm: number) => void;
+  setCeilingHeight: (h: number) => void;
+  setBackgroundImage: (bg: BackgroundImage | null) => void;
+  updateBackgroundImage: (partial: Partial<BackgroundImage>) => void;
+
+  // Walls
+  addWall: (wall: Omit<Wall, 'id'>) => string;
+  updateWall: (id: string, partial: Partial<Wall>) => void;
+  deleteWall: (id: string) => void;
+
+  // Openings
+  addOpening: (opening: Omit<Opening, 'id'>) => string;
+  updateOpening: (id: string, partial: Partial<Opening>) => void;
+  deleteOpening: (id: string) => void;
+
+  // Rooms
+  addRoom: (room: Omit<Room, 'id'>) => string;
+  updateRoom: (id: string, partial: Partial<Room>) => void;
+  deleteRoom: (id: string) => void;
+
+  // Generic selection delete
+  deleteSelected: () => void;
+
+  // Editor Toggles
+  toggleOrthoSnap: () => void;
+  toggleShowGrid: () => void;
+  setOrthoSnap: (enabled: boolean) => void;
+  setShowGrid: (show: boolean) => void;
+
+  // Calibration
+  setCalibrationPointA: (pt: Point2D | null) => void;
+  setCalibrationPointB: (pt: Point2D | null) => void;
+  cancelCalibration: () => void;
+  applyCalibration: (realWorldLengthMeters: number) => void;
+
+  // History Actions
+  undo: () => void;
+  redo: () => void;
+  resetProject: () => void;
+  loadSamplePlan: () => void;
+}
+
+const MAX_HISTORY = 40;
+
+const initialProjectState: ProjectState = {
+  projectName: 'My 2-Bedroom Residence',
+  targetAreaSqm: 84,
+  numRooms: 2,
+  isCalibrated: false,
+  pixelsPerMeter: 60,
+  ceilingHeight: 2.8,
+  backgroundImage: null,
+  walls: [],
+  openings: [],
+  rooms: [],
+  furniture: [],
+  floorMaterialId: DEFAULT_FLOOR_MATERIAL_ID,
+  ceilingMaterialId: DEFAULT_CEILING_MATERIAL_ID,
+  customMaterialPrices: {},
+  customFurniturePrices: {},
+  wasteFactor: 0.1,
+  includeLabor: true,
+  laborRatePerSqm: 25,
+};
+
+export const useFloorplanStore = create<FloorplanStore>((set, get) => {
+  const pushHistory = () => {
+    const {
+      projectName,
+      targetAreaSqm,
+      numRooms,
+      isCalibrated,
+      pixelsPerMeter,
+      ceilingHeight,
+      backgroundImage,
+      walls,
+      openings,
+      rooms,
+      furniture,
+      floorMaterialId,
+      ceilingMaterialId,
+      customMaterialPrices,
+      customFurniturePrices,
+      wasteFactor,
+      includeLabor,
+      laborRatePerSqm,
+      historyPast,
+    } = get();
+
+    const snapshot: ProjectState = {
+      projectName,
+      targetAreaSqm,
+      numRooms,
+      isCalibrated,
+      pixelsPerMeter,
+      ceilingHeight,
+      backgroundImage: backgroundImage ? { ...backgroundImage } : null,
+      walls: walls.map((w) => ({ ...w, start: { ...w.start }, end: { ...w.end } })),
+      openings: openings.map((o) => ({ ...o })),
+      rooms: rooms.map((r) => ({ ...r })),
+      furniture: furniture.map((f) => ({ ...f, position: [...f.position] as [number, number, number] })),
+      floorMaterialId,
+      ceilingMaterialId,
+      customMaterialPrices: { ...customMaterialPrices },
+      customFurniturePrices: { ...customFurniturePrices },
+      wasteFactor,
+      includeLabor,
+      laborRatePerSqm,
+    };
+
+    set({
+      historyPast: [...historyPast.slice(-MAX_HISTORY + 1), snapshot],
+      historyFuture: [],
+    });
+  };
+
+  return {
+    ...initialProjectState,
+    currentMode: 'onboarding',
+    setCurrentMode: (mode) => set({ currentMode: mode }),
+
+    setProjectMetadata: (partial) =>
+      set((s) => ({
+        projectName: partial.projectName !== undefined ? partial.projectName : s.projectName,
+        targetAreaSqm: partial.targetAreaSqm !== undefined ? partial.targetAreaSqm : s.targetAreaSqm,
+        numRooms: partial.numRooms !== undefined ? partial.numRooms : s.numRooms,
+        isCalibrated: partial.isCalibrated !== undefined ? partial.isCalibrated : s.isCalibrated,
+      })),
+
+    getReadinessChecklist: () => {
+      const s = get();
+      const hasBlueprint = Boolean(s.backgroundImage?.url);
+      const isCalibrated = s.isCalibrated || s.pixelsPerMeter !== 60;
+      const hasWalls = s.walls.length >= 3;
+      const hasOpenings = s.openings.length >= 1;
+      const hasRooms = s.rooms.length >= 1;
+
+      const checks = [hasBlueprint, isCalibrated, hasWalls, hasOpenings, hasRooms];
+      const completedCount = checks.filter(Boolean).length;
+      const totalCount = 5;
+      const progressPercent = Math.round((completedCount / totalCount) * 100);
+      const isReadyFor3D = hasWalls; // Minimum 3 structural walls needed to generate 3D
+
+      return {
+        hasBlueprint,
+        isCalibrated,
+        hasWalls,
+        hasOpenings,
+        hasRooms,
+        completedCount,
+        totalCount,
+        progressPercent,
+        isReadyFor3D,
+      };
+    },
+
+    // Estimator Actions
+    setCustomMaterialPrice: (materialId, price) =>
+      set((s) => ({ customMaterialPrices: { ...s.customMaterialPrices, [materialId]: price } })),
+    setCustomFurniturePrice: (catalogId, price) =>
+      set((s) => ({ customFurniturePrices: { ...s.customFurniturePrices, [catalogId]: price } })),
+    setWasteFactor: (factor) => set({ wasteFactor: factor }),
+    setIncludeLabor: (include) => set({ includeLabor: include }),
+    setLaborRatePerSqm: (rate) => set({ laborRatePerSqm: rate }),
+    resetPriceOverrides: () => set({ customMaterialPrices: {}, customFurniturePrices: {} }),
+
+    view3dSettings: {
+      showCeiling: false,
+      showRoomLabels: true,
+      cameraMode: 'orbit',
+    },
+    selected3DTarget: null,
+    isTransformDragging: false,
+    setIsTransformDragging: (isDragging) => set({ isTransformDragging: isDragging }),
+
+    setView3dSettings: (partial) =>
+      set((s) => ({ view3dSettings: { ...s.view3dSettings, ...partial } })),
+    toggleCeiling3D: () =>
+      set((s) => ({
+        view3dSettings: { ...s.view3dSettings, showCeiling: !s.view3dSettings.showCeiling },
+      })),
+    toggleRoomLabels3D: () =>
+      set((s) => ({
+        view3dSettings: {
+          ...s.view3dSettings,
+          showRoomLabels: !s.view3dSettings.showRoomLabels,
+        },
+      })),
+    setCameraMode3D: (mode) =>
+      set((s) => ({
+        view3dSettings: { ...s.view3dSettings, cameraMode: mode },
+      })),
+    setSelected3DTarget: (target) => set({ selected3DTarget: target }),
+
+    // Furniture Actions
+    addFurniture: (item) => {
+      pushHistory();
+      const id = `furn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newFurniture: PlacedFurniture = { ...item, id };
+      set((state) => ({
+        furniture: [...state.furniture, newFurniture],
+        selected3DTarget: { type: 'furniture', id },
+      }));
+      return id;
+    },
+
+    updateFurniture: (id, partial) => {
+      set((state) => ({
+        furniture: state.furniture.map((f) => (f.id === id ? { ...f, ...partial } : f)),
+      }));
+    },
+
+    removeFurniture: (id) => {
+      pushHistory();
+      set((state) => ({
+        furniture: state.furniture.filter((f) => f.id !== id),
+        selected3DTarget:
+          state.selected3DTarget?.type === 'furniture' && state.selected3DTarget.id === id
+            ? null
+            : state.selected3DTarget,
+      }));
+    },
+
+    duplicateFurniture: (id) => {
+      const item = get().furniture.find((f) => f.id === id);
+      if (!item) return null;
+      pushHistory();
+      const newId = `furn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const duplicated: PlacedFurniture = {
+        ...item,
+        id: newId,
+        position: [item.position[0] + 0.5, item.position[1], item.position[2] + 0.5],
+      };
+      set((state) => ({
+        furniture: [...state.furniture, duplicated],
+        selected3DTarget: { type: 'furniture', id: newId },
+      }));
+      return newId;
+    },
+
+    // Materials Actions
+    setWallMaterial: (wallId, materialId, side) => {
+      pushHistory();
+      set((state) => ({
+        walls: state.walls.map((w) => {
+          if (w.id !== wallId) return w;
+          if (side === 'left') {
+            return { ...w, materialLeftId: materialId };
+          } else if (side === 'right') {
+            return { ...w, materialRightId: materialId };
+          } else {
+            return { ...w, materialLeftId: materialId, materialRightId: materialId };
+          }
+        }),
+      }));
+    },
+
+    applyMaterialToAllWalls: (materialId) => {
+      pushHistory();
+      set((state) => ({
+        walls: state.walls.map((w) => ({
+          ...w,
+          materialLeftId: materialId,
+          materialRightId: materialId,
+        })),
+      }));
+    },
+
+    setFloorMaterial: (materialId) => {
+      pushHistory();
+      set({ floorMaterialId: materialId });
+    },
+
+    setCeilingMaterial: (materialId) => {
+      pushHistory();
+      set({ ceilingMaterialId: materialId });
+    },
+
+    activeTool: 'select',
+    selectedId: null,
+    isOrthoSnapEnabled: true,
+    showGrid: true,
+    calibrationState: {
+      pointA: null,
+      pointB: null,
+      isCalibrating: false,
+    },
+    historyPast: [],
+    historyFuture: [],
+
+    setActiveTool: (tool) => {
+      if (tool !== 'calibrate') {
+        set({
+          activeTool: tool,
+          calibrationState: { pointA: null, pointB: null, isCalibrating: false },
+        });
+      } else {
+        set({
+          activeTool: tool,
+          selectedId: null,
+          calibrationState: { pointA: null, pointB: null, isCalibrating: true },
+        });
+      }
+    },
+
+    setSelectedId: (id) => set({ selectedId: id }),
+
+    setPixelsPerMeter: (ppm) => {
+      pushHistory();
+      set({ pixelsPerMeter: Math.max(10, Math.min(500, ppm)) });
+    },
+
+    setCeilingHeight: (h) => {
+      pushHistory();
+      set({ ceilingHeight: Math.max(1.8, Math.min(8.0, h)) });
+    },
+
+    setBackgroundImage: (bg) => {
+      pushHistory();
+      set({ backgroundImage: bg });
+    },
+
+    updateBackgroundImage: (partial) => {
+      const current = get().backgroundImage;
+      if (!current) return;
+      pushHistory();
+      set({
+        backgroundImage: {
+          ...current,
+          ...partial,
+        },
+      });
+    },
+
+    // Walls
+    addWall: (wallData) => {
+      pushHistory();
+      const id = `wall_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newWall: Wall = {
+        ...wallData,
+        id,
+        materialLeftId: wallData.materialLeftId || DEFAULT_WALL_MATERIAL_ID,
+        materialRightId: wallData.materialRightId || DEFAULT_WALL_MATERIAL_ID,
+      };
+      set((state) => ({
+        walls: [...state.walls, newWall],
+        selectedId: id,
+      }));
+      return id;
+    },
+
+    updateWall: (id, partial) => {
+      pushHistory();
+      set((state) => ({
+        walls: state.walls.map((w) => (w.id === id ? { ...w, ...partial } : w)),
+      }));
+    },
+
+    deleteWall: (id) => {
+      pushHistory();
+      set((state) => ({
+        walls: state.walls.filter((w) => w.id !== id),
+        openings: state.openings.filter((o) => o.wallId !== id),
+        selectedId: state.selectedId === id ? null : state.selectedId,
+        selected3DTarget:
+          state.selected3DTarget?.id === id ? null : state.selected3DTarget,
+      }));
+    },
+
+    // Openings
+    addOpening: (openingData) => {
+      pushHistory();
+      const id = `opening_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newOpening: Opening = { ...openingData, id };
+      set((state) => ({
+        openings: [...state.openings, newOpening],
+        selectedId: id,
+      }));
+      return id;
+    },
+
+    updateOpening: (id, partial) => {
+      pushHistory();
+      set((state) => ({
+        openings: state.openings.map((o) => (o.id === id ? { ...o, ...partial } : o)),
+      }));
+    },
+
+    deleteOpening: (id) => {
+      pushHistory();
+      set((state) => ({
+        openings: state.openings.filter((o) => o.id !== id),
+        selectedId: state.selectedId === id ? null : state.selectedId,
+      }));
+    },
+
+    // Rooms
+    addRoom: (roomData) => {
+      pushHistory();
+      const id = `room_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newRoom: Room = { ...roomData, id };
+      set((state) => ({
+        rooms: [...state.rooms, newRoom],
+        selectedId: id,
+      }));
+      return id;
+    },
+
+    updateRoom: (id, partial) => {
+      pushHistory();
+      set((state) => ({
+        rooms: state.rooms.map((r) => (r.id === id ? { ...r, ...partial } : r)),
+      }));
+    },
+
+    deleteRoom: (id) => {
+      pushHistory();
+      set((state) => ({
+        rooms: state.rooms.filter((r) => r.id !== id),
+        selectedId: state.selectedId === id ? null : state.selectedId,
+      }));
+    },
+
+    deleteSelected: () => {
+      const { selectedId, walls, openings, rooms, selected3DTarget } = get();
+      if (selected3DTarget?.type === 'furniture' && selected3DTarget.id) {
+        get().removeFurniture(selected3DTarget.id);
+        return;
+      }
+      if (!selectedId) return;
+
+      if (walls.some((w) => w.id === selectedId)) {
+        get().deleteWall(selectedId);
+      } else if (openings.some((o) => o.id === selectedId)) {
+        get().deleteOpening(selectedId);
+      } else if (rooms.some((r) => r.id === selectedId)) {
+        get().deleteRoom(selectedId);
+      }
+    },
+
+    // Toggles
+    toggleOrthoSnap: () => set((s) => ({ isOrthoSnapEnabled: !s.isOrthoSnapEnabled })),
+    toggleShowGrid: () => set((s) => ({ showGrid: !s.showGrid })),
+    setOrthoSnap: (enabled) => set({ isOrthoSnapEnabled: enabled }),
+    setShowGrid: (show) => set({ showGrid: show }),
+
+    // Calibration
+    setCalibrationPointA: (pt) => {
+      set((s) => ({
+        calibrationState: { ...s.calibrationState, pointA: pt, isCalibrating: true },
+      }));
+    },
+
+    setCalibrationPointB: (pt) => {
+      const { calibrationState } = get();
+      if (!calibrationState.pointA || !pt) {
+        set((s) => ({
+          calibrationState: { ...s.calibrationState, pointB: pt },
+        }));
+        return;
+      }
+      const dist = distance(calibrationState.pointA, pt);
+      set((s) => ({
+        calibrationState: {
+          ...s.calibrationState,
+          pointB: pt,
+          measuredDistanceMeters: dist,
+        },
+      }));
+    },
+
+    cancelCalibration: () => {
+      set({
+        calibrationState: { pointA: null, pointB: null, isCalibrating: false },
+        activeTool: 'select',
+      });
+    },
+
+    applyCalibration: (realWorldLengthMeters) => {
+      const { calibrationState, pixelsPerMeter } = get();
+      if (!calibrationState.pointA || !calibrationState.pointB || realWorldLengthMeters <= 0) {
+        return;
+      }
+
+      const currentMeters = distance(calibrationState.pointA, calibrationState.pointB);
+      const pixelLength = currentMeters * pixelsPerMeter;
+      const newPixelsPerMeter = Math.max(10, Math.min(500, pixelLength / realWorldLengthMeters));
+
+      pushHistory();
+      set({
+        pixelsPerMeter: Math.round(newPixelsPerMeter * 10) / 10,
+        isCalibrated: true,
+        calibrationState: { pointA: null, pointB: null, isCalibrating: false },
+        activeTool: 'select',
+      });
+    },
+
+    // Undo / Redo
+    undo: () => {
+      const { historyPast, historyFuture } = get();
+      if (historyPast.length === 0) return;
+
+      const previous = historyPast[historyPast.length - 1];
+      const newPast = historyPast.slice(0, -1);
+
+      const currentSnapshot: ProjectState = {
+        projectName: get().projectName,
+        targetAreaSqm: get().targetAreaSqm,
+        numRooms: get().numRooms,
+        isCalibrated: get().isCalibrated,
+        pixelsPerMeter: get().pixelsPerMeter,
+        ceilingHeight: get().ceilingHeight,
+        backgroundImage: get().backgroundImage,
+        walls: get().walls,
+        openings: get().openings,
+        rooms: get().rooms,
+        furniture: get().furniture,
+        floorMaterialId: get().floorMaterialId,
+        ceilingMaterialId: get().ceilingMaterialId,
+        customMaterialPrices: { ...get().customMaterialPrices },
+        customFurniturePrices: { ...get().customFurniturePrices },
+        wasteFactor: get().wasteFactor,
+        includeLabor: get().includeLabor,
+        laborRatePerSqm: get().laborRatePerSqm,
+      };
+
+      set({
+        ...previous,
+        historyPast: newPast,
+        historyFuture: [currentSnapshot, ...historyFuture],
+        selectedId: null,
+        selected3DTarget: null,
+      });
+    },
+
+    redo: () => {
+      const { historyPast, historyFuture } = get();
+      if (historyFuture.length === 0) return;
+
+      const next = historyFuture[0];
+      const newFuture = historyFuture.slice(1);
+
+      const currentSnapshot: ProjectState = {
+        projectName: get().projectName,
+        targetAreaSqm: get().targetAreaSqm,
+        numRooms: get().numRooms,
+        isCalibrated: get().isCalibrated,
+        pixelsPerMeter: get().pixelsPerMeter,
+        ceilingHeight: get().ceilingHeight,
+        backgroundImage: get().backgroundImage,
+        walls: get().walls,
+        openings: get().openings,
+        rooms: get().rooms,
+        furniture: get().furniture,
+        floorMaterialId: get().floorMaterialId,
+        ceilingMaterialId: get().ceilingMaterialId,
+        customMaterialPrices: { ...get().customMaterialPrices },
+        customFurniturePrices: { ...get().customFurniturePrices },
+        wasteFactor: get().wasteFactor,
+        includeLabor: get().includeLabor,
+        laborRatePerSqm: get().laborRatePerSqm,
+      };
+
+      set({
+        ...next,
+        historyPast: [...historyPast, currentSnapshot],
+        historyFuture: newFuture,
+        selectedId: null,
+        selected3DTarget: null,
+      });
+    },
+
+    resetProject: () => {
+      pushHistory();
+      set({
+        ...initialProjectState,
+        selectedId: null,
+        selected3DTarget: null,
+        activeTool: 'select',
+        calibrationState: { pointA: null, pointB: null, isCalibrating: false },
+      });
+    },
+
+    loadSamplePlan: () => {
+      pushHistory();
+      const sampleWalls: Wall[] = [
+        {
+          id: 'w1',
+          start: { x: 0, y: 0 },
+          end: { x: 8, y: 0 },
+          thickness: 0.2,
+          materialLeftId: 'wp_linen_beige',
+          materialRightId: 'paint_pure_white',
+        },
+        {
+          id: 'w2',
+          start: { x: 8, y: 0 },
+          end: { x: 8, y: 6 },
+          thickness: 0.2,
+          materialLeftId: 'wp_vertical_stripes',
+          materialRightId: 'paint_pure_white',
+        },
+        {
+          id: 'w3',
+          start: { x: 8, y: 6 },
+          end: { x: 0, y: 6 },
+          thickness: 0.2,
+          materialLeftId: 'paint_soft_sage',
+          materialRightId: 'paint_pure_white',
+        },
+        {
+          id: 'w4',
+          start: { x: 0, y: 6 },
+          end: { x: 0, y: 0 },
+          thickness: 0.2,
+          materialLeftId: 'wp_exposed_brick',
+          materialRightId: 'paint_pure_white',
+        },
+        {
+          id: 'w5',
+          start: { x: 4.5, y: 0 },
+          end: { x: 4.5, y: 6 },
+          thickness: 0.15,
+          materialLeftId: 'wp_acoustic_slats',
+          materialRightId: 'paint_warm_greige',
+        },
+        {
+          id: 'w6',
+          start: { x: 4.5, y: 3 },
+          end: { x: 8, y: 3 },
+          thickness: 0.15,
+          materialLeftId: 'wp_venetian_plaster',
+          materialRightId: 'paint_terracotta',
+        },
+        {
+          id: 'w7',
+          start: { x: 0, y: 4 },
+          end: { x: 2.2, y: 4 },
+          thickness: 0.15,
+          materialLeftId: 'paint_midnight_navy',
+          materialRightId: 'paint_warm_greige',
+        },
+        {
+          id: 'w8',
+          start: { x: 2.2, y: 4 },
+          end: { x: 2.2, y: 6 },
+          thickness: 0.15,
+          materialLeftId: 'paint_midnight_navy',
+          materialRightId: 'paint_pure_white',
+        },
+      ];
+
+      const sampleOpenings: Opening[] = [
+        { id: 'op1', wallId: 'w4', type: 'door', positionRatio: 0.25, width: 0.9, height: 2.1, sillHeight: 0, flip: false },
+        { id: 'op2', wallId: 'w1', type: 'window', positionRatio: 0.35, width: 1.6, height: 1.4, sillHeight: 0.9 },
+        { id: 'op3', wallId: 'w5', type: 'door', positionRatio: 0.25, width: 0.85, height: 2.1, sillHeight: 0, flip: true },
+        { id: 'op4', wallId: 'w2', type: 'window', positionRatio: 0.25, width: 1.4, height: 1.4, sillHeight: 0.9 },
+        { id: 'op5', wallId: 'w5', type: 'door', positionRatio: 0.75, width: 0.85, height: 2.1, sillHeight: 0, flip: false },
+        { id: 'op6', wallId: 'w2', type: 'window', positionRatio: 0.75, width: 1.4, height: 1.4, sillHeight: 0.9 },
+        { id: 'op7', wallId: 'w7', type: 'door', positionRatio: 0.55, width: 0.75, height: 2.1, sillHeight: 0, flip: true },
+      ];
+
+      const sampleRooms: Room[] = [
+        { id: 'r1', name: 'Living & Dining', x: 2.2, y: 2.0 },
+        { id: 'r2', name: 'Master Bedroom', x: 6.2, y: 1.5 },
+        { id: 'r3', name: 'Guest Bedroom', x: 6.2, y: 4.5 },
+        { id: 'r4', name: 'Bathroom', x: 1.1, y: 5.0 },
+      ];
+
+      const sampleFurniture: PlacedFurniture[] = [
+        // Living room sofa, coffee table, TV console, lamp
+        {
+          id: 'furn_demo_sofa',
+          catalogId: 'furn_sofa_3seater',
+          name: 'Modern 3-Seater Sofa',
+          position: [2.2, 0, 1.4],
+          rotationY: 0,
+          scale: 1,
+          color: '#475569',
+          price: 850,
+        },
+        {
+          id: 'furn_demo_table',
+          catalogId: 'furn_coffee_table',
+          name: 'Minimalist Coffee Table',
+          position: [2.2, 0, 2.3],
+          rotationY: 0,
+          scale: 1,
+          color: '#78350f',
+          price: 240,
+        },
+        {
+          id: 'furn_demo_tv',
+          catalogId: 'furn_tv_console',
+          name: 'Media Console & 65" TV',
+          position: [2.2, 0, 3.7],
+          rotationY: Math.PI,
+          scale: 1,
+          color: '#1e293b',
+          price: 1100,
+        },
+        {
+          id: 'furn_demo_plant',
+          catalogId: 'furn_potted_plant',
+          name: 'Monstera in Ceramic Pot',
+          position: [0.6, 0, 0.6],
+          rotationY: 0,
+          scale: 1,
+          color: '#15803d',
+          price: 85,
+        },
+        // Living room window curtains
+        {
+          id: 'furn_demo_curtains',
+          catalogId: 'furn_curtains_pleated',
+          name: 'Floor-to-Ceiling Curtains',
+          position: [2.8, 0, 0.15],
+          rotationY: 0,
+          scale: 1,
+          color: '#fef3c7',
+          price: 280,
+        },
+        // Master Bedroom Bed & Nightstand
+        {
+          id: 'furn_demo_bed',
+          catalogId: 'furn_bed_queen',
+          name: 'Queen Bed with Headboard',
+          position: [6.2, 0, 1.3],
+          rotationY: Math.PI / 2,
+          scale: 1,
+          color: '#f1f5f9',
+          price: 1250,
+        },
+        {
+          id: 'furn_demo_nightstand',
+          catalogId: 'furn_nightstand',
+          name: 'Floating Bedside Nightstand',
+          position: [6.2, 0, 2.45],
+          rotationY: Math.PI / 2,
+          scale: 1,
+          color: '#451a03',
+          price: 160,
+        },
+      ];
+
+      set({
+        projectName: 'Sample 84 m² Apartment',
+        targetAreaSqm: 84,
+        numRooms: 2,
+        isCalibrated: true,
+        currentMode: '2d',
+        pixelsPerMeter: 60,
+        ceilingHeight: 2.8,
+        floorMaterialId: 'floor_natural_oak',
+        ceilingMaterialId: 'ceil_matte_white',
+        walls: sampleWalls,
+        openings: sampleOpenings,
+        rooms: sampleRooms,
+        furniture: sampleFurniture,
+        customMaterialPrices: {},
+        customFurniturePrices: {},
+        wasteFactor: 0.1,
+        includeLabor: true,
+        laborRatePerSqm: 25,
+        selectedId: null,
+        selected3DTarget: null,
+      });
+    },
+  };
+});

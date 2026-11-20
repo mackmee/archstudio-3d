@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
 import { ToolType } from '@/types/floorplan';
+import { AIScanPreviewModal, AIScanResultData } from '@/components/editor2d/AIScanPreviewModal';
 import {
   MousePointer,
   Hand,
@@ -16,6 +17,8 @@ import {
   Tag,
   Magnet,
   Grid,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 
 interface ToolItem {
@@ -35,10 +38,56 @@ export const LeftToolbar: React.FC = () => {
     showGrid,
     toggleShowGrid,
     setBackgroundImage,
+    backgroundImage,
+    ceilingHeight,
+    targetAreaSqm,
   } = useFloorplanStore();
 
   const { language } = usePreferencesStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // AI Scanner state in 2D Editor
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanData, setScanData] = useState<AIScanResultData | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  const handleAiScan = async () => {
+    if (!backgroundImage?.url) {
+      alert(getTranslation(language, 'aiNoBlueprintAlert'));
+      fileInputRef.current?.click();
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const response = await fetch('/api/ai/scan-floorplan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: backgroundImage.url,
+          imageWidth: backgroundImage.width || 1000,
+          imageHeight: backgroundImage.height || 800,
+          ceilingHeight: ceilingHeight || 2.8,
+          targetAreaSqm: targetAreaSqm || 84,
+          language,
+        }),
+      });
+
+      const resJson = await response.json();
+      if (!response.ok || !resJson.success) {
+        throw new Error(resJson.error || getTranslation(language, 'aiScanError'));
+      }
+
+      setScanData(resJson.data);
+      setIsPreviewOpen(true);
+    } catch (err: unknown) {
+      console.error('AI Scan Error in 2D:', err);
+      const msg = err instanceof Error ? err.message : getTranslation(language, 'aiScanError');
+      alert(msg);
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const mainTools: ToolItem[] = [
     { id: 'select', labelKey: 'toolSelect', shortLabel: { uz: 'Tanlash', ru: 'Выбор' }, shortcut: 'V', icon: MousePointer },
@@ -139,6 +188,30 @@ export const LeftToolbar: React.FC = () => {
         </button>
       </div>
 
+      {/* AI Gemini Vision Scanner Quick Button */}
+      <div className="w-full px-2 mt-1">
+        <button
+          onClick={handleAiScan}
+          disabled={isScanning}
+          title={getTranslation(language, 'aiScanTooltip')}
+          className="group relative flex flex-col items-center justify-center w-full aspect-square rounded-xl text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+        >
+          {isScanning ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Sparkles className="w-5 h-5 text-cyan-500 dark:text-cyan-400" />
+          )}
+          <span className="text-[9px] mt-0.5 font-bold leading-none">
+            AI Scan
+          </span>
+
+          <div className="absolute left-full ml-2 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700/80 rounded-md text-xs text-slate-900 dark:text-white whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+            <span className="font-semibold">{getTranslation(language, 'aiScanBtn')}</span>
+            <span className="text-cyan-500 block text-[10px]">Gemini 2.5 Flash</span>
+          </div>
+        </button>
+      </div>
+
       <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
       {/* Architectural Snapping & Display Toggles */}
@@ -185,6 +258,14 @@ export const LeftToolbar: React.FC = () => {
           </div>
         </button>
       </div>
+
+      {/* Gemini Vision AI Scan Preview & Review Modal */}
+      <AIScanPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        scanData={scanData}
+        blueprintUrl={backgroundImage?.url}
+      />
     </aside>
   );
 };

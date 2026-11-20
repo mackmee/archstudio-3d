@@ -239,6 +239,23 @@ export const translations = {
     noProjectsHint: 'Joriy rejangizni saqlash uchun "Saqlash" tugmasini bosing yoki namunaviy loyihani oching.',
     projectLastUpdated: 'So‘nggi yangilanish:',
     signOut: 'Chiqish',
+
+    // Gemini Vision AI Scanner
+    aiScanBtn: 'AI bilan Chizmani O‘qish (Gemini Vision)',
+    aiScanTooltip: 'Gemini Vision orqali 2D devorlarni avtomatik aniqlash',
+    aiScanning: 'Gemini AI chizmani skanerlamoqda...',
+    aiScanningSub: 'Devorlar, eshiklar, derazalar va xonalar tahlil qilinmoqda...',
+    aiScanSuccess: 'Chizma muvaffaqiyatli tahlil qilindi!',
+    aiPreviewTitle: 'AI Aniqlagan Arxitektura Rejasi',
+    aiPreviewSub: 'Gemini Vision aniqlagan devorlar, eshik/derazalar va xonalarni tekshiring',
+    aiDetectedWalls: 'Devorlar',
+    aiDetectedOpenings: 'Eshik va derazalar',
+    aiDetectedRooms: 'Xonalar',
+    aiDimensions: 'Hisoblangan o‘lcham',
+    aiApplyAndEdit: 'Qabul qilish va 2D-da tahrirlash',
+    aiCancel: 'Bekor qilish',
+    aiNoBlueprintAlert: 'Iltimos, avval xonadon reja-chizmasi rasmini yuklang.',
+    aiScanError: 'AI tahlilida xatolik yuz berdi. Iltimos qaytadan urinib ko‘ring.',
   },
   ru: {
     // Brand & Header
@@ -478,6 +495,23 @@ export const translations = {
     noProjectsHint: 'Нажмите «Сохранить», чтобы сохранить текущий проект, или загрузите демо-план.',
     projectLastUpdated: 'Обновлено:',
     signOut: 'Выйти',
+
+    // Gemini Vision AI Scanner
+    aiScanBtn: 'Распознать чертеж через AI (Gemini Vision)',
+    aiScanTooltip: 'Автоматическое распознавание 2D стен через Gemini Vision',
+    aiScanning: 'Gemini AI сканирует чертеж...',
+    aiScanningSub: 'Анализируются несущие стены, двери, окна и комнаты...',
+    aiScanSuccess: 'Чертеж успешно распознан!',
+    aiPreviewTitle: 'План, Распознанный ИИ',
+    aiPreviewSub: 'Проверьте стены, двери/окна и комнаты, распознанные Gemini Vision',
+    aiDetectedWalls: 'Стены',
+    aiDetectedOpenings: 'Двери и окна',
+    aiDetectedRooms: 'Комнаты',
+    aiDimensions: 'Расчетные габариты',
+    aiApplyAndEdit: 'Применить и перейти в 2D',
+    aiCancel: 'Отмена',
+    aiNoBlueprintAlert: 'Пожалуйста, сначала загрузите изображение плана квартиры.',
+    aiScanError: 'Ошибка при анализе ИИ. Пожалуйста, попробуйте еще раз.',
   },
 };
 

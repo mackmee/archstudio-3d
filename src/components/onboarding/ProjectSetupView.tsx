@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
+import { AIScanPreviewModal, AIScanResultData } from '@/components/editor2d/AIScanPreviewModal';
 import {
   UploadCloud,
   FileImage,
@@ -16,6 +17,8 @@ import {
   Ruler,
   Layers,
   ShieldCheck,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 export const ProjectSetupView: React.FC = () => {
@@ -40,6 +43,47 @@ export const ProjectSetupView: React.FC = () => {
   const [localCeiling, setLocalCeiling] = useState(ceilingHeight || 2.8);
   const [localArea, setLocalArea] = useState(targetAreaSqm || 84);
   const [localRooms, setLocalRooms] = useState(numRooms || 2);
+
+  // AI Scanner state
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanData, setScanData] = useState<AIScanResultData | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  const handleTriggerAiScan = async () => {
+    if (!backgroundImage?.url) return;
+    setIsScanning(true);
+    setScanError(null);
+
+    try {
+      const response = await fetch('/api/ai/scan-floorplan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: backgroundImage.url,
+          imageWidth: backgroundImage.width || 1000,
+          imageHeight: backgroundImage.height || 800,
+          ceilingHeight: localCeiling,
+          targetAreaSqm: localArea,
+          language,
+        }),
+      });
+
+      const resJson = await response.json();
+      if (!response.ok || !resJson.success) {
+        throw new Error(resJson.error || getTranslation(language, 'aiScanError'));
+      }
+
+      setScanData(resJson.data);
+      setIsPreviewOpen(true);
+    } catch (err: unknown) {
+      console.error('AI Scan Error:', err);
+      const msg = err instanceof Error ? err.message : getTranslation(language, 'aiScanError');
+      setScanError(msg);
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -188,6 +232,30 @@ export const ProjectSetupView: React.FC = () => {
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-[10px] font-mono text-cyan-700 dark:text-cyan-300 shadow-xs">
                       {backgroundImage.width} × {backgroundImage.height} px
                     </div>
+
+                    {/* Animated Laser Grid Scan Overlay */}
+                    {isScanning && (
+                      <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center overflow-hidden">
+                        {/* Animated Laser Beam */}
+                        <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-scan-laser" />
+                        {/* Grid Glow Effect */}
+                        <div className="absolute inset-0 bg-[radial-gradient(#22d3ee_1px,transparent_1px)] [background-size:20px_20px] opacity-25" />
+
+                        <div className="relative z-10 flex flex-col items-center gap-2.5 p-4 text-center">
+                          <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 shadow-xl shadow-cyan-500/30 animate-pulse">
+                            <Sparkles className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-white tracking-wide">
+                              {getTranslation(language, 'aiScanning')}
+                            </p>
+                            <p className="text-[11px] text-cyan-300 mt-0.5">
+                              {getTranslation(language, 'aiScanningSub')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 px-1">
                     <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
@@ -212,6 +280,55 @@ export const ProjectSetupView: React.FC = () => {
                       }}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* AI Gemini Vision Scanner Card */}
+              {backgroundImage && (
+                <div className="mt-3.5 p-3.5 rounded-xl bg-gradient-to-r from-cyan-500/10 via-indigo-500/10 to-blue-500/10 border border-cyan-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20 shrink-0">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                          {getTranslation(language, 'aiScanBtn')}
+                        </h4>
+                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
+                          Gemini 2.5
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {getTranslation(language, 'aiScanTooltip')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleTriggerAiScan}
+                    disabled={isScanning}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 via-indigo-600 to-blue-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{getTranslation(language, 'aiScanning')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>{getTranslation(language, 'aiScanBtn')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {scanError && (
+                <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{scanError}</span>
                 </div>
               )}
             </div>
@@ -382,6 +499,14 @@ export const ProjectSetupView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Gemini Vision AI Scan Preview & Review Modal */}
+      <AIScanPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        scanData={scanData}
+        blueprintUrl={backgroundImage?.url}
+      />
     </div>
   );
 };

@@ -137,6 +137,16 @@ interface FloorplanStore extends ProjectState {
   redo: () => void;
   resetProject: () => void;
   loadSamplePlan: () => void;
+
+  // Cloud Project State & Actions
+  currentProjectId: string | null;
+  lastSavedAt: string | null;
+  isSaving: boolean;
+  setCurrentProjectId: (id: string | null) => void;
+  setLastSavedAt: (timestamp: string | null) => void;
+  setIsSaving: (saving: boolean) => void;
+  loadProjectData: (project: { id: string; name: string; floorplan_data: Partial<ProjectState>; updated_at?: string }) => void;
+  createNewProject: (name?: string) => void;
 }
 
 const MAX_HISTORY = 40;
@@ -863,6 +873,60 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         laborRatePerSqm: 25,
         selectedId: null,
         selected3DTarget: null,
+      });
+    },
+
+    // Cloud Project State & Actions
+    currentProjectId: null,
+    lastSavedAt: null,
+    isSaving: false,
+
+    setCurrentProjectId: (id) => set({ currentProjectId: id }),
+    setLastSavedAt: (timestamp) => set({ lastSavedAt: timestamp }),
+    setIsSaving: (saving) => set({ isSaving: saving }),
+
+    loadProjectData: ({ id, name, floorplan_data, updated_at }) => {
+      set({
+        currentProjectId: id,
+        lastSavedAt: updated_at || new Date().toISOString(),
+        projectName: name || floorplan_data?.projectName || 'Project',
+        targetAreaSqm: floorplan_data?.targetAreaSqm ?? 84,
+        numRooms: floorplan_data?.numRooms ?? 2,
+        isCalibrated: floorplan_data?.isCalibrated ?? true,
+        pixelsPerMeter: floorplan_data?.pixelsPerMeter ?? 60,
+        ceilingHeight: floorplan_data?.ceilingHeight ?? 2.8,
+        backgroundImage: floorplan_data?.backgroundImage ?? null,
+        walls: floorplan_data?.walls ?? [],
+        openings: floorplan_data?.openings ?? [],
+        rooms: floorplan_data?.rooms ?? [],
+        furniture: floorplan_data?.furniture ?? [],
+        floorMaterialId: floorplan_data?.floorMaterialId ?? DEFAULT_FLOOR_MATERIAL_ID,
+        ceilingMaterialId: floorplan_data?.ceilingMaterialId ?? DEFAULT_CEILING_MATERIAL_ID,
+        customMaterialPrices: floorplan_data?.customMaterialPrices ?? {},
+        customFurniturePrices: floorplan_data?.customFurniturePrices ?? {},
+        wasteFactor: floorplan_data?.wasteFactor ?? 0.1,
+        includeLabor: floorplan_data?.includeLabor ?? true,
+        laborRatePerSqm: floorplan_data?.laborRatePerSqm ?? 25,
+        selectedId: null,
+        selected3DTarget: null,
+        currentMode: (floorplan_data?.walls && floorplan_data.walls.length >= 3) ? '2d' : 'onboarding',
+        historyPast: [],
+        historyFuture: [],
+      });
+    },
+
+    createNewProject: (name) => {
+      set({
+        ...initialProjectState,
+        projectName: name || 'New Architecture Project',
+        currentProjectId: null,
+        lastSavedAt: null,
+        isSaving: false,
+        selectedId: null,
+        selected3DTarget: null,
+        currentMode: 'onboarding',
+        historyPast: [],
+        historyFuture: [],
       });
     },
   };

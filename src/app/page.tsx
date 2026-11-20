@@ -1,14 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
+import { useAuthStore } from '@/store/useAuthStore';
+import { AuthView } from '@/components/auth/AuthView';
 import { TopHeader } from '@/components/layout/TopHeader';
 import { LeftToolbar } from '@/components/layout/LeftToolbar';
 import { PropertiesPanel } from '@/components/layout/PropertiesPanel';
 import { StatusBar } from '@/components/layout/StatusBar';
 import { CalibrationModal } from '@/components/editor2d/CalibrationModal';
 import { ProjectReadinessCard } from '@/components/editor2d/ProjectReadinessCard';
+import { Loader2 } from 'lucide-react';
 
 // Dynamically import Onboarding View with ssr: false
 const ProjectSetupView = dynamic(
@@ -18,7 +21,7 @@ const ProjectSetupView = dynamic(
     loading: () => (
       <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
           <span>Loading Project Setup Studio...</span>
         </div>
       </div>
@@ -41,7 +44,7 @@ const Scene3D = dynamic(
     loading: () => (
       <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
           <span>Initializing 3D Architectural Scene...</span>
         </div>
       </div>
@@ -57,7 +60,7 @@ const EstimatorView = dynamic(
     loading: () => (
       <div className="w-full h-full flex items-center justify-center bg-[#090d16] text-slate-400 text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
           <span>Generating Construction Estimate & BOM...</span>
         </div>
       </div>
@@ -67,10 +70,41 @@ const EstimatorView = dynamic(
 
 export default function Home() {
   const { currentMode } = useFloorplanStore();
+  const { user, loading, initAuthListener } = useAuthStore();
 
+  useEffect(() => {
+    const unsubscribe = initAuthListener();
+    return () => {
+      unsubscribe();
+    };
+  }, [initAuthListener]);
+
+  // Loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-[#090d16] text-slate-100">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 via-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/25 text-white font-bold text-base tracking-wider animate-pulse">
+            3D
+          </div>
+          <div className="flex items-center gap-2.5 text-xs text-slate-400 font-medium">
+            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+            <span>ArchStudio 3D Pro yuklanmoqda...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, render the Glassmorphic Auth View
+  if (!user) {
+    return <AuthView />;
+  }
+
+  // Authenticated Studio Workspace
   return (
-    <main className="flex flex-col h-screen w-screen overflow-hidden bg-[#090d16] font-sans text-slate-100">
-      {/* Top Application Header with 4-Step Stepper */}
+    <main className="flex flex-col h-screen w-screen overflow-hidden bg-[#090d16] dark:bg-[#090d16] font-sans text-slate-100">
+      {/* Top Application Header with 4-Step Stepper & Cloud Actions */}
       <TopHeader />
 
       {/* Main Studio Workspace */}

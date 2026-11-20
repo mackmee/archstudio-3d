@@ -19,7 +19,12 @@ interface HttpsResponse {
 /**
  * Reliable Node https.request helper with family: 4 and custom timeout
  */
-function postHttpsRequest(urlString: string, payload: unknown, timeoutMs = 45000): Promise<HttpsResponse> {
+function postHttpsRequest(
+  urlString: string,
+  payload: unknown,
+  apiKey: string,
+  timeoutMs = 45000
+): Promise<HttpsResponse> {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(urlString);
     const postData = JSON.stringify(payload);
@@ -35,6 +40,7 @@ function postHttpsRequest(urlString: string, payload: unknown, timeoutMs = 45000
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(postData),
         'User-Agent': 'ArchStudio-3D/1.0',
+        'x-goog-api-key': apiKey,
       },
     };
 
@@ -171,20 +177,14 @@ Return ONLY valid JSON matching this schema:
   ]
 }`;
 
-    // Auto-detect endpoint based on API key prefix
-    // AQ.* -> Vertex AI Express endpoint
-    // AIza* -> Gemini Developer API endpoint
-    const isVertexExpress = apiKey.startsWith('AQ.');
-    const candidateEndpoints: string[] = isVertexExpress
-      ? [
-          `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-          `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        ]
-      : [
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
-        ];
+    // Pass API key via x-goog-api-key header to generativelanguage.googleapis.com
+    // Works cleanly with Google AI Studio AQ.* and AIza* keys with automatic model fallback
+    const candidateEndpoints: string[] = [
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+      'https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent',
+    ];
 
     const payload = {
       contents: [
@@ -213,7 +213,7 @@ Return ONLY valid JSON matching this schema:
 
     for (const endpoint of candidateEndpoints) {
       try {
-        const res = await postHttpsRequest(endpoint, payload, 45000);
+        const res = await postHttpsRequest(endpoint, payload, apiKey, 45000);
         if (res.statusCode === 404) {
           lastErrDetails = res.data;
           lastStatusCode = res.statusCode;

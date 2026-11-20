@@ -76,9 +76,16 @@ export const LeftToolbar: React.FC = () => {
         }),
       });
 
-      const resJson = await response.json();
-      if (!response.ok || !resJson.success) {
-        throw new Error(resJson.error || getTranslation(language, 'aiScanError'));
+      let resJson: { success?: boolean; error?: string; data?: AIScanResultData };
+      try {
+        resJson = await response.json();
+      } catch {
+        resJson = { error: 'Serverdan javob o‘qishda xatolik yuz berdi.' };
+      }
+
+      if (!response.ok || !resJson?.success || !resJson?.data) {
+        alert(resJson?.error || getTranslation(language, 'aiScanError'));
+        return;
       }
 
       setScanData(resJson.data);

@@ -1,4 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
+import dns from 'node:dns';
+import https from 'node:https';
+import { URL } from 'node:url';
+
+// Prioritize IPv4 resolution to prevent macOS IPv6 fetch / undici network drops
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  console.warn('Could not set dns default result order:', e);
+}
+
+interface HttpsResponse {
+  statusCode: number;
+  statusMessage: string;
+  data: string;
+}
+
+/**
+ * Reliable Node https.request helper with family: 4 and custom timeout
+ */
+function postHttpsRequest(urlString: string, payload: unknown, timeoutMs = 45000): Promise<HttpsResponse> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(urlString);
+    const postData = JSON.stringify(payload);
+
+    const options: https.RequestOptions = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 443,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'POST',
+      family: 4, // Strictly IPv4
+      timeout: timeoutMs,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        'User-Agent': 'ArchStudio-3D/1.0',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode || 200,
+          statusMessage: res.statusMessage || '',
+          data: body,
+        });
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      const err = new Error(`Request timed out after ${timeoutMs / 1000}s`);
+      (err as unknown as { code: string }).code = 'ETIMEDOUT';
+      reject(err);
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
 
 interface AiFloorplanResponse {
   estimatedWidthMeters?: number;
@@ -102,71 +171,106 @@ Return ONLY valid JSON matching this schema:
   ]
 }`;
 
-    const CANDIDATE_MODELS = [
-      'gemini-3-flash-preview',
-      'gemini-flash-latest',
-      'gemini-2.0-flash',
-    ];
+    // Auto-detect endpoint based on API key prefix
+    // AQ.* -> Vertex AI Express endpoint
+    // AIza* -> Gemini Developer API endpoint
+    const isVertexExpress = apiKey.startsWith('AQ.');
+    const candidateEndpoints: string[] = isVertexExpress
+      ? [
+          `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        ]
+      : [
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+        ];
 
-    let response: Response | null = null;
-    let usedModel = CANDIDATE_MODELS[0];
-    let lastErrText = '';
-
-    for (const model of CANDIDATE_MODELS) {
-      usedModel = model;
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: systemPrompt },
-                  {
-                    inlineData: {
-                      mimeType,
-                      data: cleanBase64,
-                    },
-                  },
-                ],
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: systemPrompt },
+            {
+              inlineData: {
+                mimeType,
+                data: cleanBase64,
               },
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.1,
             },
-          }),
-        });
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+      },
+    };
 
-        if (res.status === 404) {
-          lastErrText = await res.text();
-          console.warn(`Model ${model} returned 404, trying fallback...`);
+    let httpRes: HttpsResponse | null = null;
+    let lastErrDetails = '';
+    let lastStatusCode = 500;
+    let lastErrorCode: string | undefined;
+
+    for (const endpoint of candidateEndpoints) {
+      try {
+        const res = await postHttpsRequest(endpoint, payload, 45000);
+        if (res.statusCode === 404) {
+          lastErrDetails = res.data;
+          lastStatusCode = res.statusCode;
+          console.warn(`Endpoint ${endpoint.slice(0, 60)} returned 404, trying next candidate...`);
           continue;
         }
-
-        response = res;
+        httpRes = res;
         break;
-      } catch (fetchErr) {
-        console.error(`Fetch failed for model ${model}:`, fetchErr);
-        throw fetchErr;
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        lastErrorCode = code;
+        lastErrDetails = err instanceof Error ? err.message : String(err);
+        console.error(`HTTPS request failed (${code}):`, lastErrDetails);
       }
     }
 
-    if (!response || !response.ok) {
-      const errText = response ? await response.text() : lastErrText;
-      console.error('Gemini API Error:', errText);
+    if (!httpRes || httpRes.statusCode >= 400) {
+      const status = httpRes?.statusCode || lastStatusCode || 500;
+      const rawText = httpRes?.data || lastErrDetails;
+      console.error(`Gemini API Error (${status}):`, rawText);
+
+      let parsedMsg = rawText;
+      let apiErrorCode = lastErrorCode;
+      try {
+        const json = JSON.parse(rawText);
+        if (json.error?.message) {
+          parsedMsg = json.error.message;
+        }
+        if (json.error?.status || json.error?.code) {
+          apiErrorCode = String(json.error.status || json.error.code);
+        }
+      } catch {
+        // use raw text
+      }
+
       return NextResponse.json(
-        { error: `Gemini API request failed (${response?.status || 500}) on model ${usedModel}: ${errText}` },
-        { status: response?.status || 500 }
+        {
+          error: `Gemini API xatosi (${status}): ${parsedMsg}`,
+          statusCode: status,
+          errorCode: apiErrorCode,
+          raw: rawText,
+        },
+        { status }
       );
     }
 
-    const aiResult = await response.json();
-    const candidateText =
-      aiResult?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    let candidateText = '{}';
+    try {
+      const aiResult = JSON.parse(httpRes.data);
+      candidateText = aiResult?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    } catch {
+      console.error('Failed to parse Gemini response JSON:', httpRes.data);
+      return NextResponse.json(
+        { error: 'AI serveridan noto‘g‘ri formatdagi javob qaytdi.' },
+        { status: 502 }
+      );
+    }
 
     let parsed: AiFloorplanResponse;
     try {
@@ -307,23 +411,16 @@ Return ONLY valid JSON matching this schema:
     });
   } catch (error: unknown) {
     console.error('AI Scan Floorplan Route Error:', error);
-    const errObj = error as { message?: string; cause?: { message?: string; code?: string; errno?: number } };
-    const causeCode = errObj?.cause?.code;
-    const causeMsg = errObj?.cause?.message;
-    let userMsg = errObj?.message || 'Unknown internal error';
-
-    if (userMsg.includes('fetch failed')) {
-      if (causeCode === 'ENOTFOUND') {
-        userMsg = 'Internet yoki DNS server bilan aloqa uzilgan (generativelanguage.googleapis.com ga ulanib bo‘lmadi).';
-      } else if (causeCode === 'ETIMEDOUT') {
-        userMsg = 'Gemini AI serveridan javob kutish vaqti tugadi (Timeout). Iltimos, qayta urinib ko‘ring.';
-      } else if (causeMsg) {
-        userMsg = `Server tarmoq xatosi: ${causeMsg} (${causeCode || 'CONN_ERR'})`;
-      }
-    }
+    const errObj = error as { message?: string; code?: string };
+    const causeCode = errObj?.code || 'INTERNAL_ERROR';
+    const causeMsg = errObj?.message || 'Unknown internal error';
 
     return NextResponse.json(
-      { error: userMsg, details: causeMsg || undefined, code: causeCode || undefined },
+      {
+        error: `AI skaner server xatosi: ${causeMsg}`,
+        errorCode: causeCode,
+        details: causeMsg,
+      },
       { status: 500 }
     );
   }

@@ -73,15 +73,22 @@ export const ProjectSetupView: React.FC = () => {
         }),
       });
 
-      const resJson = await response.json();
-      if (!response.ok || !resJson.success) {
-        throw new Error(resJson.error || getTranslation(language, 'aiScanError'));
+      let resJson: { success?: boolean; error?: string; data?: AIScanResultData };
+      try {
+        resJson = await response.json();
+      } catch {
+        resJson = { error: 'Serverdan javob o‘qishda xatolik yuz berdi.' };
+      }
+
+      if (!response.ok || !resJson?.success || !resJson?.data) {
+        setScanError(resJson?.error || getTranslation(language, 'aiScanError'));
+        return;
       }
 
       setScanData(resJson.data);
       setIsPreviewOpen(true);
     } catch (err: unknown) {
-      console.error('AI Scan Error:', err);
+      console.error('AI Scan Client Error:', err);
       const msg = err instanceof Error ? err.message : getTranslation(language, 'aiScanError');
       setScanError(msg);
     } finally {

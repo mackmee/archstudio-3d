@@ -2,12 +2,11 @@
 
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Html } from '@react-three/drei';
 import { Wall, Room } from '@/types/floorplan';
-import { Tag } from 'lucide-react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { getMaterialById } from '@/data/materials';
 import { getScaledTexture } from '@/lib/textures';
+import { RoomLabelSprite } from './RoomLabelSprite';
 
 interface FloorAndCeilingProps {
   walls: Wall[];
@@ -141,19 +140,14 @@ export const FloorAndCeiling: React.FC<FloorAndCeilingProps> = ({
         />
       </mesh>
 
-      {/* 4. Floating 3D Room Label Markers */}
+      {/* 4. Floating 3D Room Label Sprites (Pure WebGL - Zero DOM / Portal memory leaks) */}
       {showRoomLabels &&
         rooms.map((room) => (
-          <group key={room.id} position={[room.x, 0.35, room.y]}>
-            <Html center distanceFactor={14} style={{ pointerEvents: 'none' }}>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-white shadow-xl backdrop-blur-md select-none whitespace-nowrap animate-in fade-in zoom-in-95 duration-200">
-                <Tag className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-xs font-semibold tracking-wide">
-                  {room.name}
-                </span>
-              </div>
-            </Html>
-          </group>
+          <RoomLabelSprite
+            key={room.id}
+            name={room.name}
+            position={[room.x, 0.42, room.y]}
+          />
         ))}
     </group>
   );

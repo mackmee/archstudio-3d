@@ -5,6 +5,7 @@ import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
 import { AIScanPreviewModal, AIScanResultData } from '@/components/editor2d/AIScanPreviewModal';
+import { compressBlueprintImage } from '@/lib/imageCompression';
 import {
   UploadCloud,
   FileImage,
@@ -56,13 +57,16 @@ export const ProjectSetupView: React.FC = () => {
     setScanError(null);
 
     try {
+      // Compress blueprint image to max 1024px to guarantee fast upload and prevent fetch timeouts
+      const compressed = await compressBlueprintImage(backgroundImage.url, 1024, 0.82);
+
       const response = await fetch('/api/ai/scan-floorplan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: backgroundImage.url,
-          imageWidth: backgroundImage.width || 1000,
-          imageHeight: backgroundImage.height || 800,
+          imageBase64: compressed.dataUrl,
+          imageWidth: compressed.width,
+          imageHeight: compressed.height,
           ceilingHeight: localCeiling,
           targetAreaSqm: localArea,
           language,
@@ -85,29 +89,44 @@ export const ProjectSetupView: React.FC = () => {
     }
   };
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('Please upload a valid image file (PNG, JPG, WebP).');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const url = e.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        setBackgroundImage({
-          url,
-          opacity: 0.7,
-          visible: true,
-          width: img.width,
-          height: img.height,
-          x: 0,
-          y: 0,
-        });
+    try {
+      const compressed = await compressBlueprintImage(file, 1024, 0.82);
+      setBackgroundImage({
+        url: compressed.dataUrl,
+        opacity: 0.7,
+        visible: true,
+        width: compressed.width,
+        height: compressed.height,
+        x: 0,
+        y: 0,
+      });
+    } catch (err) {
+      console.error('Failed to process image file:', err);
+      // Fallback to standard reader if canvas compression fails
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          setBackgroundImage({
+            url,
+            opacity: 0.7,
+            visible: true,
+            width: img.width,
+            height: img.height,
+            x: 0,
+            y: 0,
+          });
+        };
+        img.src = url;
       };
-      img.src = url;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -296,7 +315,7 @@ export const ProjectSetupView: React.FC = () => {
                           {getTranslation(language, 'aiScanBtn')}
                         </h4>
                         <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
-                          Gemini 2.5
+                          Gemini Vision AI
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">

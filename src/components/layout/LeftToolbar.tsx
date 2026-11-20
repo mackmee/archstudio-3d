@@ -6,6 +6,7 @@ import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
 import { ToolType } from '@/types/floorplan';
 import { AIScanPreviewModal, AIScanResultData } from '@/components/editor2d/AIScanPreviewModal';
+import { compressBlueprintImage } from '@/lib/imageCompression';
 import {
   MousePointer,
   Hand,
@@ -60,13 +61,15 @@ export const LeftToolbar: React.FC = () => {
 
     setIsScanning(true);
     try {
+      const compressed = await compressBlueprintImage(backgroundImage.url, 1024, 0.82);
+
       const response = await fetch('/api/ai/scan-floorplan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: backgroundImage.url,
-          imageWidth: backgroundImage.width || 1000,
-          imageHeight: backgroundImage.height || 800,
+          imageBase64: compressed.dataUrl,
+          imageWidth: compressed.width,
+          imageHeight: compressed.height,
           ceilingHeight: ceilingHeight || 2.8,
           targetAreaSqm: targetAreaSqm || 84,
           language,
@@ -99,29 +102,44 @@ export const LeftToolbar: React.FC = () => {
     { id: 'room', labelKey: 'toolRoom', shortLabel: { uz: 'Xona', ru: 'Комната' }, shortcut: 'R', icon: Tag },
   ];
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        setBackgroundImage({
-          url: dataUrl,
-          opacity: 0.5,
-          visible: true,
-          width: img.width,
-          height: img.height,
-          x: 0,
-          y: 0,
-        });
-        setActiveTool('calibrate');
+    try {
+      const compressed = await compressBlueprintImage(file, 1024, 0.82);
+      setBackgroundImage({
+        url: compressed.dataUrl,
+        opacity: 0.5,
+        visible: true,
+        width: compressed.width,
+        height: compressed.height,
+        x: 0,
+        y: 0,
+      });
+      setActiveTool('calibrate');
+    } catch (err) {
+      console.error('Failed to compress blueprint in LeftToolbar:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          setBackgroundImage({
+            url: dataUrl,
+            opacity: 0.5,
+            visible: true,
+            width: img.width,
+            height: img.height,
+            x: 0,
+            y: 0,
+          });
+          setActiveTool('calibrate');
+        };
+        img.src = dataUrl;
       };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
     e.target.value = '';
   };
 

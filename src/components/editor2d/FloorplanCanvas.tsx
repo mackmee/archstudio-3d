@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
+import { usePreferencesStore } from '@/store/usePreferencesStore';
 import {
   distance,
   snapToAngle,
@@ -43,6 +44,9 @@ export const FloorplanCanvas: React.FC = () => {
     setCalibrationPointA,
     setCalibrationPointB,
   } = useFloorplanStore();
+
+  const { theme } = usePreferencesStore();
+  const isLight = theme === 'light';
 
   // Viewport navigation state (Pan & Zoom)
   const [viewport, setViewport] = useState<ViewportTransform>({
@@ -176,12 +180,24 @@ export const FloorplanCanvas: React.FC = () => {
     const width = canvas.width;
     const height = canvas.height;
 
+    const bgColor = isLight ? '#f8fafc' : '#080c15';
+    const minorGridColor = isLight ? '#e2e8f0' : '#151e2e';
+    const majorGridColor = isLight ? '#cbd5e1' : '#223049';
+    const axisXColor = isLight ? '#ef444477' : '#ef444455';
+    const axisYColor = isLight ? '#16a34a77' : '#22c55e55';
+    const badgeBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.88)';
+    const badgeBorder = isLight ? '#cbd5e1' : '#475569';
+    const badgeText = isLight ? '#0f172a' : '#f1f5f9';
+    const roomBadgeBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.85)';
+    const roomBadgeBorder = isLight ? '#cbd5e1' : '#475569';
+    const roomBadgeText = isLight ? '#0f172a' : '#ffffff';
+
     // Reset transform & clear
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    // Dark architectural background
-    ctx.fillStyle = '#080c15';
+    // Architectural background
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);
 
     // Apply viewport transform (Pan & Zoom)
@@ -203,7 +219,7 @@ export const FloorplanCanvas: React.FC = () => {
 
       // Minor grid lines
       ctx.beginPath();
-      ctx.strokeStyle = '#151e2e';
+      ctx.strokeStyle = minorGridColor;
       ctx.lineWidth = 1 / (viewport.zoom * pixelsPerMeter);
       for (let x = minX; x <= maxX; x += minorStep) {
         if (Math.abs(Math.round(x) - x) > 0.01) {
@@ -221,7 +237,7 @@ export const FloorplanCanvas: React.FC = () => {
 
       // Major grid lines
       ctx.beginPath();
-      ctx.strokeStyle = '#223049';
+      ctx.strokeStyle = majorGridColor;
       ctx.lineWidth = 1.2 / (viewport.zoom * pixelsPerMeter);
       const minMajorX = Math.floor(topLeftWorld.x / majorStep) * majorStep;
       const maxMajorX = Math.ceil(bottomRightWorld.x / majorStep) * majorStep;
@@ -239,14 +255,14 @@ export const FloorplanCanvas: React.FC = () => {
 
       // World Axes (X in red-slate, Y in green-slate)
       ctx.beginPath();
-      ctx.strokeStyle = '#ef444455'; // X Axis
+      ctx.strokeStyle = axisXColor; // X Axis
       ctx.lineWidth = 2 / (viewport.zoom * pixelsPerMeter);
       ctx.moveTo(minX * pixelsPerMeter, 0);
       ctx.lineTo(maxX * pixelsPerMeter, 0);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.strokeStyle = '#22c55e55'; // Y Axis
+      ctx.strokeStyle = axisYColor; // Y Axis
       ctx.moveTo(0, minY * pixelsPerMeter);
       ctx.lineTo(0, maxY * pixelsPerMeter);
       ctx.stroke();
@@ -355,8 +371,8 @@ export const FloorplanCanvas: React.FC = () => {
         const textH = 12;
 
         // Badge Background
-        ctx.fillStyle = isSelected ? 'rgba(14, 165, 233, 0.95)' : 'rgba(15, 23, 42, 0.88)';
-        ctx.strokeStyle = isSelected ? '#38bdf8' : '#475569';
+        ctx.fillStyle = isSelected ? 'rgba(14, 165, 233, 0.95)' : badgeBg;
+        ctx.strokeStyle = isSelected ? '#38bdf8' : badgeBorder;
         ctx.lineWidth = 1;
         const badgeW = textMetrics.width + padX * 2;
         const badgeH = textH + padY * 2;
@@ -366,7 +382,7 @@ export const FloorplanCanvas: React.FC = () => {
         ctx.stroke();
 
         // Badge Text
-        ctx.fillStyle = isSelected ? '#030712' : '#f1f5f9';
+        ctx.fillStyle = isSelected ? '#030712' : badgeText;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, 0, 0);
@@ -408,7 +424,7 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.rotate(wallAngle);
 
       // Cutout mask over the wall
-      ctx.fillStyle = '#080c15';
+      ctx.fillStyle = bgColor;
       ctx.fillRect(
         -openingWidthPx / 2,
         -wallThicknessPx / 2 - 2,
@@ -506,10 +522,10 @@ export const FloorplanCanvas: React.FC = () => {
       // Badge Card
       ctx.beginPath();
       ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 8);
-      ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.85)';
+      ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.25)' : roomBadgeBg;
       ctx.fill();
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeStyle = isSelected ? '#38bdf8' : '#475569';
+      ctx.strokeStyle = isSelected ? '#38bdf8' : roomBadgeBorder;
       ctx.stroke();
 
       // Icon Dot
@@ -519,7 +535,7 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.fill();
 
       // Text
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isSelected ? '#0284c7' : roomBadgeText;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(room.name, 6, 0);
@@ -690,6 +706,7 @@ export const FloorplanCanvas: React.FC = () => {
     snappedEndpoint,
     hoveredWallForOpening,
     calibrationState,
+    isLight,
   ]);
 
   // Handle Resize and Animation Frame Rendering

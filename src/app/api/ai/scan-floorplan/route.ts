@@ -102,38 +102,65 @@ Return ONLY valid JSON matching this schema:
   ]
 }`;
 
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const CANDIDATE_MODELS = [
+      'gemini-3-flash-preview',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+    ];
 
-    const response = await fetch(geminiEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: systemPrompt },
+    let response: Response | null = null;
+    let usedModel = CANDIDATE_MODELS[0];
+    let lastErrText = '';
+
+    for (const model of CANDIDATE_MODELS) {
+      usedModel = model;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
               {
-                inlineData: {
-                  mimeType,
-                  data: cleanBase64,
-                },
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: cleanBase64,
+                    },
+                  },
+                ],
               },
             ],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
-    });
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          }),
+        });
 
-    if (!response.ok) {
-      const errText = await response.text();
+        if (res.status === 404) {
+          lastErrText = await res.text();
+          console.warn(`Model ${model} returned 404, trying fallback...`);
+          continue;
+        }
+
+        response = res;
+        break;
+      } catch (fetchErr) {
+        console.error(`Fetch failed for model ${model}:`, fetchErr);
+        throw fetchErr;
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errText = response ? await response.text() : lastErrText;
       console.error('Gemini API Error:', errText);
       return NextResponse.json(
-        { error: `Gemini API request failed (${response.status}): ${errText}` },
-        { status: response.status }
+        { error: `Gemini API request failed (${response?.status || 500}) on model ${usedModel}: ${errText}` },
+        { status: response?.status || 500 }
       );
     }
 
@@ -280,7 +307,24 @@ Return ONLY valid JSON matching this schema:
     });
   } catch (error: unknown) {
     console.error('AI Scan Floorplan Route Error:', error);
-    const msg = error instanceof Error ? error.message : 'Unknown internal error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const errObj = error as { message?: string; cause?: { message?: string; code?: string; errno?: number } };
+    const causeCode = errObj?.cause?.code;
+    const causeMsg = errObj?.cause?.message;
+    let userMsg = errObj?.message || 'Unknown internal error';
+
+    if (userMsg.includes('fetch failed')) {
+      if (causeCode === 'ENOTFOUND') {
+        userMsg = 'Internet yoki DNS server bilan aloqa uzilgan (generativelanguage.googleapis.com ga ulanib bo‘lmadi).';
+      } else if (causeCode === 'ETIMEDOUT') {
+        userMsg = 'Gemini AI serveridan javob kutish vaqti tugadi (Timeout). Iltimos, qayta urinib ko‘ring.';
+      } else if (causeMsg) {
+        userMsg = `Server tarmoq xatosi: ${causeMsg} (${causeCode || 'CONN_ERR'})`;
+      }
+    }
+
+    return NextResponse.json(
+      { error: userMsg, details: causeMsg || undefined, code: causeCode || undefined },
+      { status: 500 }
+    );
   }
 }

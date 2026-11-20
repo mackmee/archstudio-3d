@@ -200,10 +200,6 @@ export function computeFloorplanEstimate(options: EstimateOptions): EstimateSumm
     furniture,
     rooms,
     wasteFactor = 0.1,
-    includeLabor = true,
-    laborRatePerSqm = 25,
-    includeDelivery = true,
-    deliveryFee = DEFAULT_DELIVERY_FEE,
     customMaterialPrices = {},
     customFurniturePrices = {},
   } = options;
@@ -386,9 +382,9 @@ export function computeFloorplanEstimate(options: EstimateOptions): EstimateSumm
     0
   );
 
-  // Labor & Delivery
-  const laborCost = includeLabor ? Math.round(floorArea * laborRatePerSqm) : 0;
-  const deliveryCost = includeDelivery && furniture.length > 0 ? deliveryFee : 0;
+  // Master Labor and Delivery Fee hidden for pure material & furniture estimation
+  const laborCost = 0;
+  const deliveryCost = 0;
 
   // -------------------------------------------------------------
   // Room-by-Room Breakdown Calculation
@@ -621,7 +617,6 @@ export function computeFloorplanEstimate(options: EstimateOptions): EstimateSumm
       roomWallItems.reduce((s, it) => s + it.totalPrice, 0) +
       roomSurfaceItems.reduce((s, it) => s + it.totalPrice, 0);
     const roomFurnCost = roomFurnItems.reduce((s, it) => s + it.totalPrice, 0);
-    const roomLaborCost = includeLabor ? Math.round(normalizedArea * laborRatePerSqm) : 0;
 
     return {
       roomId: re.roomId,
@@ -637,12 +632,12 @@ export function computeFloorplanEstimate(options: EstimateOptions): EstimateSumm
       furnitureItems: roomFurnItems,
       materialsSubtotal: roomMatCost,
       furnitureSubtotal: roomFurnCost,
-      laborCost: roomLaborCost,
-      subtotal: roomMatCost + roomFurnCost + roomLaborCost,
+      laborCost: 0,
+      subtotal: roomMatCost + roomFurnCost,
     };
   });
 
-  const grandTotal = finishingMaterialsSubtotal + furnitureSubtotal + laborCost + deliveryCost;
+  const grandTotal = finishingMaterialsSubtotal + furnitureSubtotal;
 
   return {
     totalFloorArea: floorArea,

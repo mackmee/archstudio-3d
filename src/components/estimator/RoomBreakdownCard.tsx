@@ -10,7 +10,6 @@ import {
   Layers,
   Sparkles,
   Armchair,
-  Hammer,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -87,7 +86,7 @@ export const RoomBreakdownCard: React.FC<RoomBreakdownCardProps> = ({
       </div>
 
       {/* Mini KPI Pill Bar */}
-      <div className="grid grid-cols-3 border-t border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-950/20 px-4 py-2 text-xs">
+      <div className="grid grid-cols-2 border-t border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-950/20 px-4 py-2 text-xs">
         <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
           <Sparkles className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
           <span className="text-slate-400">{getTranslation(language, 'roomMaterialsCost')}:</span>
@@ -100,13 +99,6 @@ export const RoomBreakdownCard: React.FC<RoomBreakdownCardProps> = ({
           <span className="text-slate-400">{getTranslation(language, 'roomFurnitureCost')}:</span>
           <span className="font-semibold font-mono">
             {formatPrice(room.furnitureSubtotal, currency, language, usdToUzsRate)}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-          <Hammer className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-          <span className="text-slate-400">{getTranslation(language, 'roomLaborCost')}:</span>
-          <span className="font-semibold font-mono">
-            {formatPrice(room.laborCost, currency, language, usdToUzsRate)}
           </span>
         </div>
       </div>

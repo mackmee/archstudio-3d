@@ -115,25 +115,12 @@ export function exportEstimateToCsv(
     rows.push([]);
   }
 
-  // Section 4: Labor & Delivery
-  rows.push([language === 'uz' ? '4. USTA XIZMATI VA YETKAZIB BERISH' : '4. РАБОТЫ И ДОСТАВКА']);
-  rows.push([language === 'uz' ? 'Xizmat turi' : 'Вид услуги', `${language === 'uz' ? 'Narxi' : 'Стоимость'} (${currLabel})`]);
-  rows.push([
-    language === 'uz' ? 'Pardozlash va o‘rnatish usta haqi' : 'Отделочные и монтажные работы',
-    formatPrice(summary.laborCost, currency, language, rate),
-  ]);
-  rows.push([
-    language === 'uz' ? 'Yetkazib berish xizmati' : 'Транспортная доставка',
-    formatPrice(summary.deliveryCost, currency, language, rate),
-  ]);
-  rows.push([]);
-
-  // Section 5: Room-by-Room Distribution
+  // Section 4: Room-by-Room Distribution
   if (summary.roomEstimates && summary.roomEstimates.length > 0) {
     rows.push([
       language === 'uz'
-        ? '5. XONALAR KESIMIDA TAQSIMOT VA XARAJATLAR'
-        : '5. ПОКОМНАТНОЕ РАСПРЕДЕЛЕНИЕ И ЗАТРАТЫ',
+        ? '4. XONALAR KESIMIDA TAQSIMOT VA XARAJATLAR'
+        : '4. ПОКОМНАТНОЕ РАСПРЕДЕЛЕНИЕ И ЗАТРАТЫ',
     ]);
     rows.push([
       language === 'uz' ? 'Xona Nomi' : 'Комната',
@@ -141,7 +128,6 @@ export function exportEstimateToCsv(
       language === 'uz' ? 'Sof Devor (m²)' : 'Стены нетто (м²)',
       `${language === 'uz' ? 'Materiallar' : 'Материалы'} (${currLabel})`,
       `${language === 'uz' ? 'Mebel & Jihoz' : 'Мебель'} (${currLabel})`,
-      `${language === 'uz' ? 'Usta Xaqi' : 'Мастера'} (${currLabel})`,
       `${language === 'uz' ? 'Xona Jami' : 'Итого по комнате'} (${currLabel})`,
     ]);
 
@@ -152,7 +138,6 @@ export function exportEstimateToCsv(
         re.netWallArea.toFixed(1),
         formatPrice(re.materialsSubtotal, currency, language, rate),
         formatPrice(re.furnitureSubtotal, currency, language, rate),
-        formatPrice(re.laborCost, currency, language, rate),
         formatPrice(re.subtotal, currency, language, rate),
       ]);
     });
@@ -170,30 +155,8 @@ export function exportEstimateToCsv(
     formatPrice(summary.furnitureSubtotal, currency, language, rate),
   ]);
   rows.push([
-    language === 'uz' ? 'Usta Xizmati va Yetkazib Berish' : 'Итого Работы и Доставка',
-    formatPrice(summary.laborCost + summary.deliveryCost, currency, language, rate),
-  ]);
-  rows.push([
     language === 'uz' ? 'UMUMIY SMETA BYUDJETI' : 'ОБЩАЯ СМЕТА РЕМОНТА',
     formatPrice(summary.grandTotal, currency, language, rate),
-  ]);
-  rows.push([]);
-
-  // Formal Signatures
-  rows.push([
-    language === 'uz' ? 'BUYURTMACHI VA IJROCHI TASDIG‘I' : 'ПОДТВЕРЖДЕНИЕ ЗАКАЗЧИКА И ИСПОЛНИТЕЛЯ',
-  ]);
-  rows.push([
-    language === 'uz' ? 'Buyurtmachi (Mijoz):' : 'Заказчик (Клиент):',
-    '______________________',
-    language === 'uz' ? 'Sana:' : 'Дата:',
-    new Date().toLocaleDateString(),
-  ]);
-  rows.push([
-    language === 'uz' ? 'Ijrochi (Pudratchi / Usta):' : 'Исполнитель (Подрядчик):',
-    '______________________',
-    language === 'uz' ? 'Imzo:' : 'Подпись:',
-    '______________________',
   ]);
 
   // Convert to CSV string with \r\n

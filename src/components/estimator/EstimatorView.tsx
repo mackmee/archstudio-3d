@@ -15,8 +15,6 @@ import {
   ShieldAlert,
   Layers,
   Box,
-  Hammer,
-  Truck,
   Armchair,
   Paintbrush,
   Maximize2,
@@ -38,17 +36,9 @@ export const EstimatorView: React.FC = () => {
     furniture,
     rooms,
     wasteFactor,
-    includeLabor,
-    laborRatePerSqm,
-    includeDelivery,
-    deliveryFee,
     customMaterialPrices,
     customFurniturePrices,
     setWasteFactor,
-    setIncludeLabor,
-    setLaborRatePerSqm,
-    setIncludeDelivery,
-    setDeliveryFee,
     setCustomMaterialPrice,
     setCustomFurniturePrice,
     applyUzbekistanMarketPreset,
@@ -78,10 +68,6 @@ export const EstimatorView: React.FC = () => {
       furniture,
       rooms,
       wasteFactor,
-      includeLabor,
-      laborRatePerSqm,
-      includeDelivery,
-      deliveryFee,
       customMaterialPrices,
       customFurniturePrices,
     });
@@ -94,10 +80,6 @@ export const EstimatorView: React.FC = () => {
     furniture,
     rooms,
     wasteFactor,
-    includeLabor,
-    laborRatePerSqm,
-    includeDelivery,
-    deliveryFee,
     customMaterialPrices,
     customFurniturePrices,
   ]);
@@ -287,10 +269,10 @@ export const EstimatorView: React.FC = () => {
             </button>
           </div>
 
-          {/* Construction Settings: Waste Factor, Labor & Delivery */}
+          {/* Construction Settings: Waste Factor */}
           <div className="flex flex-wrap items-center gap-3">
             {/* Waste Factor Pills */}
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
               <span className="text-[11px] text-slate-400 font-medium mr-1 flex items-center gap-1">
                 <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
                 {getTranslation(language, 'wasteReserve')}:
@@ -308,73 +290,6 @@ export const EstimatorView: React.FC = () => {
                   {Math.round(f * 100)}%
                 </button>
               ))}
-            </div>
-
-            {/* Labor Toggle */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-              <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeLabor}
-                  onChange={(e) => setIncludeLabor(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-cyan-500 rounded"
-                />
-                <span>{language === 'uz' ? 'Usta xaqi' : 'Мастера'}</span>
-              </label>
-              {includeLabor && (
-                <div className="flex items-center gap-1 border-l border-slate-300 dark:border-slate-800 pl-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={
-                      currency === 'UZS'
-                        ? Math.round(laborRatePerSqm * usdToUzsRate)
-                        : laborRatePerSqm
-                    }
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      setLaborRatePerSqm(convertToUsd(val, currency, usdToUzsRate));
-                    }}
-                    className="w-18 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-center text-xs font-mono text-cyan-600 dark:text-cyan-300 focus:outline-hidden"
-                    title={getTranslation(language, 'laborRateLabel')}
-                  />
-                  <span className="text-[10px] text-slate-500">/m²</span>
-                </div>
-              )}
-            </div>
-
-            {/* Delivery Toggle */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-              <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeDelivery}
-                  onChange={(e) => setIncludeDelivery(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-cyan-500 rounded"
-                />
-                <span>{language === 'uz' ? 'Yetkazish' : 'Доставка'}</span>
-              </label>
-              {includeDelivery && (
-                <div className="flex items-center gap-1 border-l border-slate-300 dark:border-slate-800 pl-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={
-                      currency === 'UZS'
-                        ? Math.round(deliveryFee * usdToUzsRate)
-                        : deliveryFee
-                    }
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      setDeliveryFee(convertToUsd(val, currency, usdToUzsRate));
-                    }}
-                    className="w-20 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-center text-xs font-mono text-amber-600 dark:text-amber-300 focus:outline-hidden"
-                    title={getTranslation(language, 'deliveryFeeLabel')}
-                  />
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -452,7 +367,7 @@ export const EstimatorView: React.FC = () => {
                 {formatPrice(estimate.grandTotal, currency, language, usdToUzsRate)}
               </span>
             </div>
-            <p className="text-[11px] text-cyan-600/80 dark:text-cyan-400/80 mt-1">{language === 'uz' ? 'Barcha xarajatlar' : 'Все материалы + работы'}</p>
+            <p className="text-[11px] text-cyan-600/80 dark:text-cyan-400/80 mt-1">{language === 'uz' ? 'Pardozlash va mebellar' : 'Отделка и мебель'}</p>
           </div>
         </div>
 
@@ -862,59 +777,6 @@ export const EstimatorView: React.FC = () => {
               )}
             </div>
 
-            {/* SECTION 4: Labor & Delivery Services */}
-            <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
-              <div className="flex items-center gap-2 mb-4">
-                <Hammer className="w-4 h-4 text-emerald-500" />
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {getTranslation(language, 'table4Title')}
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600 dark:text-cyan-400">
-                      <Hammer className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                        {getTranslation(language, 'laborServiceTitle')}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {includeLabor
-                          ? `${estimate.totalFloorArea.toFixed(1)} m² @ ${formatPrice(laborRatePerSqm, currency, language, usdToUzsRate)}/m²`
-                          : language === 'uz' ? 'O‘chirilgan' : 'Отключено'}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-sm font-mono font-bold text-slate-900 dark:text-white">
-                    {formatPrice(estimate.laborCost, currency, language, usdToUzsRate)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-                      <Truck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                        {getTranslation(language, 'deliveryServiceTitle')}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {estimate.deliveryCost > 0
-                          ? language === 'uz' ? 'Mebellar uchun yagona yetkazish' : 'Доставка всех позиций мебели'
-                          : language === 'uz' ? 'Talab etilmaydi' : 'Не требуется'}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-sm font-mono font-bold text-slate-900 dark:text-white">
-                    {formatPrice(estimate.deliveryCost, currency, language, usdToUzsRate)}
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -954,37 +816,6 @@ export const EstimatorView: React.FC = () => {
                 <Printer className="w-4 h-4" />
                 <span>PDF</span>
               </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Formal Signatures & Client Block */}
-        <div className="p-6 rounded-2xl bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-          <div className="space-y-3">
-            <span className="font-bold text-slate-700 dark:text-slate-300 block">
-              {getTranslation(language, 'signClient')}:
-            </span>
-            <div className="flex items-center gap-2 border-b border-slate-300 dark:border-slate-700 pb-1">
-              <span className="text-slate-400 font-medium">{getTranslation(language, 'signSignature')}:</span>
-              <span className="flex-1 text-slate-900 dark:text-white font-mono">____________________________</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">{getTranslation(language, 'signDate')}:</span>
-              <span className="text-slate-700 dark:text-slate-300 font-mono">{new Date().toLocaleDateString()}</span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <span className="font-bold text-slate-700 dark:text-slate-300 block">
-              {getTranslation(language, 'signContractor')}:
-            </span>
-            <div className="flex items-center gap-2 border-b border-slate-300 dark:border-slate-700 pb-1">
-              <span className="text-slate-400 font-medium">{getTranslation(language, 'signSignature')}:</span>
-              <span className="flex-1 text-slate-900 dark:text-white font-mono">____________________________</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">{getTranslation(language, 'signDate')}:</span>
-              <span className="text-slate-700 dark:text-slate-300 font-mono">{new Date().toLocaleDateString()}</span>
             </div>
           </div>
         </div>

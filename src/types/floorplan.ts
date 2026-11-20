@@ -87,6 +87,7 @@ export interface ReadinessChecklist {
 }
 
 export type LightingPreset = 'day' | 'sunset' | 'night';
+export type MarketPresetType = 'standard' | 'premium';
 
 export interface View3DSettings {
   showCeiling: boolean;

@@ -3,6 +3,19 @@ import { Currency, Language } from '@/store/usePreferencesStore';
 export const DEFAULT_USD_TO_UZS_RATE = 12800;
 
 /**
+ * Converts a localized price input (in UZS or USD) back to stored USD.
+ */
+export function convertToUsd(
+  inputAmount: number,
+  currency: Currency,
+  rate = DEFAULT_USD_TO_UZS_RATE
+): number {
+  if (currency === 'USD') return inputAmount;
+  if (rate <= 0) return inputAmount;
+  return Number((inputAmount / rate).toFixed(2));
+}
+
+/**
  * Converts a USD amount to the selected currency.
  */
 export function convertFromUsd(

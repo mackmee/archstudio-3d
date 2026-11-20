@@ -128,6 +128,37 @@ export function exportEstimateToCsv(
   ]);
   rows.push([]);
 
+  // Section 5: Room-by-Room Distribution
+  if (summary.roomEstimates && summary.roomEstimates.length > 0) {
+    rows.push([
+      language === 'uz'
+        ? '5. XONALAR KESIMIDA TAQSIMOT VA XARAJATLAR'
+        : '5. ПОКОМНАТНОЕ РАСПРЕДЕЛЕНИЕ И ЗАТРАТЫ',
+    ]);
+    rows.push([
+      language === 'uz' ? 'Xona Nomi' : 'Комната',
+      language === 'uz' ? 'Pol Maydoni (m²)' : 'Площадь (м²)',
+      language === 'uz' ? 'Sof Devor (m²)' : 'Стены нетто (м²)',
+      `${language === 'uz' ? 'Materiallar' : 'Материалы'} (${currLabel})`,
+      `${language === 'uz' ? 'Mebel & Jihoz' : 'Мебель'} (${currLabel})`,
+      `${language === 'uz' ? 'Usta Xaqi' : 'Мастера'} (${currLabel})`,
+      `${language === 'uz' ? 'Xona Jami' : 'Итого по комнате'} (${currLabel})`,
+    ]);
+
+    summary.roomEstimates.forEach((re) => {
+      rows.push([
+        `"${re.roomName}"`,
+        re.floorArea.toFixed(1),
+        re.netWallArea.toFixed(1),
+        formatPrice(re.materialsSubtotal, currency, language, rate),
+        formatPrice(re.furnitureSubtotal, currency, language, rate),
+        formatPrice(re.laborCost, currency, language, rate),
+        formatPrice(re.subtotal, currency, language, rate),
+      ]);
+    });
+    rows.push([]);
+  }
+
   // Grand Totals
   rows.push([language === 'uz' ? 'MOLIYAVIY XULOSA' : 'ИТОГОВЫЙ БЮДЖЕТ']);
   rows.push([
@@ -145,6 +176,24 @@ export function exportEstimateToCsv(
   rows.push([
     language === 'uz' ? 'UMUMIY SMETA BYUDJETI' : 'ОБЩАЯ СМЕТА РЕМОНТА',
     formatPrice(summary.grandTotal, currency, language, rate),
+  ]);
+  rows.push([]);
+
+  // Formal Signatures
+  rows.push([
+    language === 'uz' ? 'BUYURTMACHI VA IJROCHI TASDIG‘I' : 'ПОДТВЕРЖДЕНИЕ ЗАКАЗЧИКА И ИСПОЛНИТЕЛЯ',
+  ]);
+  rows.push([
+    language === 'uz' ? 'Buyurtmachi (Mijoz):' : 'Заказчик (Клиент):',
+    '______________________',
+    language === 'uz' ? 'Sana:' : 'Дата:',
+    new Date().toLocaleDateString(),
+  ]);
+  rows.push([
+    language === 'uz' ? 'Ijrochi (Pudratchi / Usta):' : 'Исполнитель (Подрядчик):',
+    '______________________',
+    language === 'uz' ? 'Imzo:' : 'Подпись:',
+    '______________________',
   ]);
 
   // Convert to CSV string with \r\n

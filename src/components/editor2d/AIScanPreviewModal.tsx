@@ -232,6 +232,8 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
           wasteFactor: state.wasteFactor,
           includeLabor: state.includeLabor,
           laborRatePerSqm: state.laborRatePerSqm,
+          includeDelivery: state.includeDelivery,
+          deliveryFee: state.deliveryFee,
         },
       ],
       historyFuture: [],

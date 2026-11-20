@@ -14,8 +14,10 @@ import {
   Wall,
   ProjectMetadata,
   ReadinessChecklist,
+  MarketPresetType,
 } from '@/types/floorplan';
 import { distance } from '@/lib/geometry';
+import { getUzbekistanMarketPreset } from '@/lib/estimator';
 import {
   DEFAULT_FLOOR_MATERIAL_ID,
   DEFAULT_CEILING_MATERIAL_ID,
@@ -42,6 +44,8 @@ interface ProjectState {
   wasteFactor: number;
   includeLabor: boolean;
   laborRatePerSqm: number;
+  includeDelivery: boolean;
+  deliveryFee: number;
 }
 
 interface FloorplanStore extends ProjectState {
@@ -59,6 +63,9 @@ interface FloorplanStore extends ProjectState {
   setWasteFactor: (factor: number) => void;
   setIncludeLabor: (include: boolean) => void;
   setLaborRatePerSqm: (rate: number) => void;
+  setIncludeDelivery: (include: boolean) => void;
+  setDeliveryFee: (fee: number) => void;
+  applyUzbekistanMarketPreset: (preset: MarketPresetType) => void;
   resetPriceOverrides: () => void;
 
   // 3D View Settings & Selection
@@ -175,6 +182,8 @@ const initialProjectState: ProjectState = {
   wasteFactor: 0.1,
   includeLabor: true,
   laborRatePerSqm: 25,
+  includeDelivery: true,
+  deliveryFee: 25,
 };
 
 export const useFloorplanStore = create<FloorplanStore>((set, get) => {
@@ -198,6 +207,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       wasteFactor,
       includeLabor,
       laborRatePerSqm,
+      includeDelivery,
+      deliveryFee,
       historyPast,
     } = get();
 
@@ -220,6 +231,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       wasteFactor,
       includeLabor,
       laborRatePerSqm,
+      includeDelivery,
+      deliveryFee,
     };
 
     set({
@@ -276,6 +289,20 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
     setWasteFactor: (factor) => set({ wasteFactor: factor }),
     setIncludeLabor: (include) => set({ includeLabor: include }),
     setLaborRatePerSqm: (rate) => set({ laborRatePerSqm: rate }),
+    setIncludeDelivery: (include) => set({ includeDelivery: include }),
+    setDeliveryFee: (fee) => set({ deliveryFee: fee }),
+    applyUzbekistanMarketPreset: (preset) => {
+      pushHistory();
+      const data = getUzbekistanMarketPreset(preset);
+      set((s) => ({
+        customMaterialPrices: {
+          ...s.customMaterialPrices,
+          ...data.materialPrices,
+        },
+        laborRatePerSqm: data.laborRatePerSqm,
+        deliveryFee: data.deliveryFee,
+      }));
+    },
     resetPriceOverrides: () => set({ customMaterialPrices: {}, customFurniturePrices: {} }),
 
     view3dSettings: {
@@ -687,6 +714,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         wasteFactor: get().wasteFactor,
         includeLabor: get().includeLabor,
         laborRatePerSqm: get().laborRatePerSqm,
+        includeDelivery: get().includeDelivery,
+        deliveryFee: get().deliveryFee,
       };
 
       set({
@@ -724,6 +753,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         wasteFactor: get().wasteFactor,
         includeLabor: get().includeLabor,
         laborRatePerSqm: get().laborRatePerSqm,
+        includeDelivery: get().includeDelivery,
+        deliveryFee: get().deliveryFee,
       };
 
       set({
@@ -963,6 +994,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         wasteFactor: floorplan_data?.wasteFactor ?? 0.1,
         includeLabor: floorplan_data?.includeLabor ?? true,
         laborRatePerSqm: floorplan_data?.laborRatePerSqm ?? 25,
+        includeDelivery: floorplan_data?.includeDelivery ?? true,
+        deliveryFee: floorplan_data?.deliveryFee ?? 25,
         selectedId: null,
         selected3DTarget: null,
         currentMode: (floorplan_data?.walls && floorplan_data.walls.length >= 3) ? '2d' : 'onboarding',

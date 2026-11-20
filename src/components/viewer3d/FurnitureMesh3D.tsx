@@ -19,6 +19,7 @@ export const FurnitureMesh3D: React.FC<FurnitureMesh3DProps> = ({ item }) => {
     updateFurniture,
     removeFurniture,
     setIsTransformDragging,
+    walls,
   } = useFloorplanStore();
 
   const isSelected =
@@ -28,6 +29,25 @@ export const FurnitureMesh3D: React.FC<FurnitureMesh3DProps> = ({ item }) => {
     () => getFurnitureCatalogItem(item.catalogId),
     [item.catalogId]
   );
+
+  // Compute outer bounding box from walls to prevent placing furniture far out into void
+  const outerBounds = useMemo(() => {
+    if (!walls || walls.length === 0) return null;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const w of walls) {
+      minX = Math.min(minX, w.start.x, w.end.x);
+      maxX = Math.max(maxX, w.start.x, w.end.x);
+      minZ = Math.min(minZ, w.start.y, w.end.y);
+      maxZ = Math.max(maxZ, w.start.y, w.end.y);
+    }
+    // Safe margin of 0.8 meters around exterior walls
+    return {
+      minX: minX - 0.8,
+      maxX: maxX + 0.8,
+      minZ: minZ - 0.8,
+      maxZ: maxZ + 0.8,
+    };
+  }, [walls]);
 
   // Compute selection ring radius based on item footprint
   const ringRadius = useMemo(() => {
@@ -47,8 +67,12 @@ export const FurnitureMesh3D: React.FC<FurnitureMesh3DProps> = ({ item }) => {
 
       if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
+        // Snap rotation angle to nearest 45 degrees (PI / 4)
+        const step = Math.PI / 4;
+        let nextRot = Math.round((item.rotationY + step) / step) * step;
+        nextRot = ((nextRot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
         updateFurniture(item.id, {
-          rotationY: (item.rotationY + Math.PI / 4) % (Math.PI * 2),
+          rotationY: nextRot,
         });
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
@@ -84,17 +108,28 @@ export const FurnitureMesh3D: React.FC<FurnitureMesh3DProps> = ({ item }) => {
         />
       )}
 
-      {/* Selection Halo Ring on Floor */}
+      {/* Selection Glowing Neon Footprint Halo on Floor */}
       {isSelected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
-          <ringGeometry args={[ringRadius * 0.88, ringRadius, 32]} />
-          <meshBasicMaterial
-            color="#38bdf8"
-            side={THREE.DoubleSide}
-            transparent
-            opacity={0.8}
-          />
-        </mesh>
+        <group position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh>
+            <circleGeometry args={[ringRadius * 0.9, 32]} />
+            <meshBasicMaterial
+              color="#0284c7"
+              side={THREE.DoubleSide}
+              transparent
+              opacity={0.2}
+            />
+          </mesh>
+          <mesh>
+            <ringGeometry args={[ringRadius * 0.92, ringRadius, 48]} />
+            <meshBasicMaterial
+              color="#38bdf8"
+              side={THREE.DoubleSide}
+              transparent
+              opacity={0.85}
+            />
+          </mesh>
+        </group>
       )}
     </group>
   );
@@ -110,10 +145,16 @@ export const FurnitureMesh3D: React.FC<FurnitureMesh3DProps> = ({ item }) => {
           const targetObj = (e?.target as unknown as { object?: THREE.Object3D })?.object;
           if (targetObj) {
             const p = targetObj.position;
+            let clampedX = p.x;
+            let clampedZ = p.z;
+            if (outerBounds) {
+              clampedX = Math.max(outerBounds.minX, Math.min(outerBounds.maxX, clampedX));
+              clampedZ = Math.max(outerBounds.minZ, Math.min(outerBounds.maxZ, clampedZ));
+            }
             const newY = catalogItem.category === 'curtains' ? Math.max(0, p.y) : 0;
-            targetObj.position.y = newY;
+            targetObj.position.set(clampedX, newY, clampedZ);
             updateFurniture(item.id, {
-              position: [p.x, newY, p.z],
+              position: [clampedX, newY, clampedZ],
             });
           }
         }}

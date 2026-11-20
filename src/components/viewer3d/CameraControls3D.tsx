@@ -23,7 +23,7 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
   resetSignal = 0,
 }) => {
   const { gl } = useThree();
-  const { isTransformDragging } = useFloorplanStore();
+  const { isTransformDragging, view3dSettings } = useFloorplanStore();
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
 
   // Walkthrough internal state
@@ -31,6 +31,22 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
   const isDragging = useRef(false);
   const euler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
   const needsPositionInit = useRef(true);
+
+  // Focused Room Animation state
+  const prevFocusedRoom = useRef<string | null>(null);
+  const isTransitioningToRoom = useRef(false);
+
+  useEffect(() => {
+    if (view3dSettings.focusedRoomId !== prevFocusedRoom.current) {
+      prevFocusedRoom.current = view3dSettings.focusedRoomId;
+      if (view3dSettings.focusedRoomId) {
+        isTransitioningToRoom.current = true;
+      } else {
+        // Reset to whole apartment view
+        needsPositionInit.current = true;
+      }
+    }
+  }, [view3dSettings.focusedRoomId]);
 
   // Calculate center of walls
   const center = useRef<THREE.Vector3>(new THREE.Vector3(4, 1.4, 3));
@@ -131,6 +147,33 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
         activeCamera.quaternion.setFromEuler(euler.current);
       }
       return;
+    }
+
+    // Smooth animated transition to focused room
+    if (isTransitioningToRoom.current && view3dSettings.focusedRoomId) {
+      const room = rooms.find((r) => r.id === view3dSettings.focusedRoomId);
+      if (room) {
+        if (mode === 'orbit') {
+          const targetPos = new THREE.Vector3(room.x, 1.2, room.y);
+          const camPos = new THREE.Vector3(room.x + 3.8, 4.2, room.y + 3.8);
+
+          if (orbitRef.current) {
+            orbitRef.current.target.lerp(targetPos, 0.08);
+            activeCamera.position.lerp(camPos, 0.08);
+            orbitRef.current.update();
+
+            if (activeCamera.position.distanceTo(camPos) < 0.1) {
+              isTransitioningToRoom.current = false;
+            }
+          }
+        } else {
+          const camPos = new THREE.Vector3(room.x, 1.65, room.y);
+          activeCamera.position.lerp(camPos, 0.1);
+          if (activeCamera.position.distanceTo(camPos) < 0.08) {
+            isTransitioningToRoom.current = false;
+          }
+        }
+      }
     }
 
     if (mode !== 'walkthrough') return;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { formatPrice } from '@/lib/currency';
@@ -9,6 +9,7 @@ import {
   MaterialCategory,
   MaterialItem,
   getMaterialsByCategory,
+  getMaterialById,
 } from '@/data/materials';
 import {
   FurnitureCategory,
@@ -30,6 +31,7 @@ import {
   RotateCw,
   Copy,
   Trash2,
+  Pipette,
 } from 'lucide-react';
 
 export const DesignSidebar: React.FC = () => {
@@ -39,6 +41,8 @@ export const DesignSidebar: React.FC = () => {
     selected3DTarget,
     setWallMaterial,
     applyMaterialToAllWalls,
+    applyMaterialToRoom,
+    view3dSettings,
     floorMaterialId,
     setFloorMaterial,
     ceilingMaterialId,
@@ -60,9 +64,57 @@ export const DesignSidebar: React.FC = () => {
   const [wallSide, setWallSide] = useState<'both' | 'left' | 'right'>('both');
   const [prevTargetType, setPrevTargetType] = useState<string | undefined>(selected3DTarget?.type);
 
+  // Eye-Dropper (Pipetka) & Apply to Room state
+  const [isEyeDropperActive, setIsEyeDropperActive] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [selectedRoomToApply, setSelectedRoomToApply] = useState<string>('');
+
+  // Active room for "Apply to Room" feature
+  const activeTargetRoomId = view3dSettings.focusedRoomId || selectedRoomToApply || (rooms[0]?.id ?? '');
+
   // Furniture Sub-state
   const [furnitureCategory, setFurnitureCategory] = useState<FurnitureCategory | 'all'>('all');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Eye-Dropper sampling effect: when active and user clicks on a 3D element
+  useEffect(() => {
+    if (!isEyeDropperActive || !selected3DTarget) return;
+
+    let sampledMatId: string | undefined;
+    if (selected3DTarget.type === 'wall') {
+      const wall = walls.find((w) => w.id === selected3DTarget.id);
+      if (wall) {
+        if (wallSide === 'right') {
+          sampledMatId = wall.materialRightId || wall.materialLeftId;
+        } else {
+          sampledMatId = wall.materialLeftId || wall.materialRightId;
+        }
+      }
+    } else if (selected3DTarget.type === 'floor') {
+      sampledMatId = floorMaterialId;
+    } else if (selected3DTarget.type === 'ceiling') {
+      sampledMatId = ceilingMaterialId;
+    }
+
+    if (sampledMatId) {
+      const mat = getMaterialById(sampledMatId);
+      const name = materialNames[mat.id]?.[language] || mat.name;
+      const sampledCategory = mat.category;
+      const msg = `${getTranslation(language, 'eyeDropperSampled')} ${name}`;
+
+      const t1 = setTimeout(() => {
+        setActiveCategory(sampledCategory);
+        setIsEyeDropperActive(false);
+        setFeedbackMsg(msg);
+      }, 0);
+
+      const t2 = setTimeout(() => setFeedbackMsg(null), 3000);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [selected3DTarget, isEyeDropperActive, walls, wallSide, floorMaterialId, ceilingMaterialId, language]);
 
   // Auto-switch tabs when 3D selection changes
   if (selected3DTarget?.type !== prevTargetType) {
@@ -284,16 +336,49 @@ export const DesignSidebar: React.FC = () => {
                   <Square className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                   {language === 'uz' ? 'Tanlangan yuza:' : 'Выбранная зона:'}
                 </span>
-                <span className="font-semibold text-slate-900 dark:text-white font-mono">
-                  {selectedWall
-                    ? `${language === 'uz' ? 'Devor' : 'Стена'} (${currentWallLength})`
-                    : selected3DTarget?.type === 'floor'
-                    ? language === 'uz' ? 'Pol qoplamasi' : 'Пол'
-                    : selected3DTarget?.type === 'ceiling'
-                    ? language === 'uz' ? 'Shift qoplamasi' : 'Потолок'
-                    : language === 'uz' ? 'Barcha devorlar' : 'Все стены'}
-                </span>
+
+                <div className="flex items-center gap-1.5">
+                  {/* Eye-Dropper (Pipetka) Tool */}
+                  <button
+                    onClick={() => setIsEyeDropperActive(!isEyeDropperActive)}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
+                      isEyeDropperActive
+                        ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/25 ring-2 ring-cyan-400 animate-pulse'
+                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400'
+                    }`}
+                    title={getTranslation(language, 'eyeDropperTool')}
+                  >
+                    <Pipette className="w-3.5 h-3.5" />
+                    <span>{getTranslation(language, 'eyeDropperTool')}</span>
+                  </button>
+
+                  <span className="font-semibold text-slate-900 dark:text-white font-mono">
+                    {selectedWall
+                      ? `${language === 'uz' ? 'Devor' : 'Стена'} (${currentWallLength})`
+                      : selected3DTarget?.type === 'floor'
+                      ? language === 'uz' ? 'Pol' : 'Пол'
+                      : selected3DTarget?.type === 'ceiling'
+                      ? language === 'uz' ? 'Shift' : 'Потолок'
+                      : language === 'uz' ? 'Barchasi' : 'Все'}
+                  </span>
+                </div>
               </div>
+
+              {/* Eye-Dropper Active Status Banner */}
+              {isEyeDropperActive && (
+                <div className="text-[11px] bg-cyan-500/15 border border-cyan-500/30 text-cyan-700 dark:text-cyan-300 p-2 rounded-lg flex items-center gap-1.5 animate-pulse">
+                  <Pipette className="w-3.5 h-3.5 shrink-0" />
+                  <span>{getTranslation(language, 'eyeDropperActive')}</span>
+                </div>
+              )}
+
+              {/* Notification Banner */}
+              {feedbackMsg && (
+                <div className="text-[11px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 p-2 rounded-lg flex items-center gap-1.5 transition-all">
+                  <Check className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                  <span>{feedbackMsg}</span>
+                </div>
+              )}
 
               {selectedWall ? (
                 <div className="space-y-2">
@@ -329,18 +414,6 @@ export const DesignSidebar: React.FC = () => {
                       {language === 'uz' ? 'B-Tomon (-Z)' : 'Сторона Б'}
                     </button>
                   </div>
-
-                  <button
-                    onClick={() => {
-                      const currentMatId =
-                        selectedWall.materialLeftId || selectedWall.materialRightId;
-                      if (currentMatId) applyMaterialToAllWalls(currentMatId);
-                    }}
-                    className="w-full py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[11px] font-medium flex items-center justify-center gap-1.5 transition"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{getTranslation(language, 'applyAllWalls')}</span>
-                  </button>
                 </div>
               ) : (
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
@@ -348,6 +421,64 @@ export const DesignSidebar: React.FC = () => {
                   <span>{language === 'uz' ? 'Rang berish uchun 3D devor yoki polni bosing.' : 'Кликните по стене или полу для настройки.'}</span>
                 </div>
               )}
+
+              {/* Batch Material Application Buttons: Apply to Room & Apply to All Walls */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 space-y-1.5">
+                {rooms.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={activeTargetRoomId}
+                      onChange={(e) => setSelectedRoomToApply(e.target.value)}
+                      className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] py-1.5 px-2 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    >
+                      {rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        const matToApply =
+                          currentActiveMaterialId ||
+                          (categoryMaterials[0]?.id ?? 'wp_linen_beige');
+                        if (activeTargetRoomId) {
+                          applyMaterialToRoom(activeTargetRoomId, matToApply);
+                          const rObj = rooms.find((r) => r.id === activeTargetRoomId);
+                          setFeedbackMsg(
+                            `${rObj?.name || ''}: ${getTranslation(language, 'applyToRoomSuccess')}`
+                          );
+                          setTimeout(() => setFeedbackMsg(null), 3000);
+                        }
+                      }}
+                      className="py-1.5 px-2.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[11px] font-medium flex items-center gap-1 transition shrink-0"
+                      title={getTranslation(language, 'applyToRoomBtn')}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{getTranslation(language, 'applyToRoomBtn')}</span>
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const matToApply =
+                      currentActiveMaterialId ||
+                      (categoryMaterials[0]?.id ?? 'wp_linen_beige');
+                    applyMaterialToAllWalls(matToApply);
+                    setFeedbackMsg(
+                      language === 'uz'
+                        ? 'Barcha devorlarga muvaffaqiyatli qo‘llandi!'
+                        : 'Успешно применено ко всем стенам!'
+                    );
+                    setTimeout(() => setFeedbackMsg(null), 3000);
+                  }}
+                  className="w-full py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-medium flex items-center justify-center gap-1.5 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
+                  <span>{getTranslation(language, 'applyToAllWallsBtn')}</span>
+                </button>
+              </div>
             </div>
 
             {/* Category Tabs */}

@@ -28,8 +28,9 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
   openings,
   ceilingHeight,
 }) => {
-  const { selected3DTarget, setSelected3DTarget, setSelectedId } = useFloorplanStore();
+  const { selected3DTarget, setSelected3DTarget, setSelectedId, view3dSettings } = useFloorplanStore();
   const isSelected = selected3DTarget?.type === 'wall' && selected3DTarget.id === wall.id;
+  const cutawayMode = view3dSettings.cutawayMode;
 
   const wallLen = useMemo(() => distance(wall.start, wall.end), [wall.start, wall.end]);
 
@@ -166,6 +167,7 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
           matA={matA}
           matB={matB}
           isSelected={isSelected}
+          cutawayMode={cutawayMode}
         />
       ))}
 
@@ -203,6 +205,7 @@ interface WallSegmentMeshProps {
   matA: ReturnType<typeof getMaterialById>;
   matB: ReturnType<typeof getMaterialById>;
   isSelected: boolean;
+  cutawayMode?: boolean;
 }
 
 const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({
@@ -210,6 +213,7 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({
   matA,
   matB,
   isSelected,
+  cutawayMode = false,
 }) => {
   // Construct 6-material array:
   // 0: +X, 1: -X, 2: +Y (top), 3: -Y (bottom), 4: +Z (Side A), 5: -Z (Side B)
@@ -248,8 +252,22 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({
       emissiveIntensity: emissiveInt,
     });
 
+    if (cutawayMode) {
+      edgeMat.transparent = true;
+      edgeMat.opacity = 0.35;
+      edgeMat.depthWrite = false;
+
+      sideAMat.transparent = true;
+      sideAMat.opacity = 0.35;
+      sideAMat.depthWrite = false;
+
+      sideBMat.transparent = true;
+      sideBMat.opacity = 0.35;
+      sideBMat.depthWrite = false;
+    }
+
     return [edgeMat, edgeMat, edgeMat, edgeMat, sideAMat, sideBMat];
-  }, [box.width, box.height, matA, matB, isSelected]);
+  }, [box.width, box.height, matA, matB, isSelected, cutawayMode]);
 
   return (
     <mesh

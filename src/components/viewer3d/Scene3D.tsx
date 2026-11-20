@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
@@ -31,30 +32,96 @@ export const Scene3D: React.FC = () => {
     setResetSignal((prev) => prev + 1);
   };
 
+  const preset = view3dSettings.lightingPreset || 'day';
+
+  // Architectural Lighting & Environment Settings per Preset
+  const lightingConfig = useMemo(() => {
+    switch (preset) {
+      case 'sunset':
+        return {
+          ambientColor: '#fed7aa',
+          ambientIntensity: 0.45,
+          hemiSky: '#fb923c',
+          hemiGround: '#1e1b4b',
+          hemiIntensity: 0.55,
+          sunPos: [18, 5.5, 14] as [number, number, number],
+          sunColor: '#ea580c',
+          sunIntensity: 1.75,
+          fillPos: [-10, 10, -8] as [number, number, number],
+          fillColor: '#fdba74',
+          fillIntensity: 0.35,
+          bgColor: '#0d1117',
+          contactShadowOpacity: 0.55,
+        };
+      case 'night':
+        return {
+          ambientColor: '#1e1b4b',
+          ambientIntensity: 0.15,
+          hemiSky: '#312e81',
+          hemiGround: '#020617',
+          hemiIntensity: 0.2,
+          sunPos: [10, 18, -10] as [number, number, number],
+          sunColor: '#93c5fd',
+          sunIntensity: 0.25,
+          fillPos: [-8, 12, 10] as [number, number, number],
+          fillColor: '#60a5fa',
+          fillIntensity: 0.1,
+          bgColor: '#030712',
+          contactShadowOpacity: 0.3,
+        };
+      case 'day':
+      default:
+        return {
+          ambientColor: '#f8fafc',
+          ambientIntensity: 0.6,
+          hemiSky: '#e0f2fe',
+          hemiGround: '#334155',
+          hemiIntensity: 0.5,
+          sunPos: [14, 22, 12] as [number, number, number],
+          sunColor: '#fffbeb',
+          sunIntensity: 1.45,
+          fillPos: [-12, 14, -10] as [number, number, number],
+          fillColor: '#cbd5e1',
+          fillIntensity: 0.4,
+          bgColor: '#080c15',
+          contactShadowOpacity: 0.65,
+        };
+    }
+  }, [preset]);
+
   return (
-    <div className="relative w-full h-full bg-[#080c15] overflow-hidden select-none">
+    <div
+      className="relative w-full h-full overflow-hidden select-none transition-colors duration-500"
+      style={{ backgroundColor: lightingConfig.bgColor }}
+    >
       {/* 3D WebGL Canvas */}
       <Canvas
         shadows
-        camera={{ position: [10, 9, 10], fov: 50, near: 0.1, far: 200 }}
+        camera={{ position: [10, 9, 10], fov: 48, near: 0.1, far: 200 }}
         gl={{
           antialias: true,
           powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.05,
         }}
         onPointerMissed={() => setSelected3DTarget(null)}
         className="block w-full h-full outline-none"
       >
-        {/* Architectural Studio Lighting */}
-        <ambientLight intensity={0.65} />
+        {/* Architectural Studio Ambient & Hemisphere Lighting */}
+        <ambientLight
+          color={lightingConfig.ambientColor}
+          intensity={lightingConfig.ambientIntensity}
+        />
         <hemisphereLight
-          args={['#f8fafc', '#334155', 0.45]}
+          args={[lightingConfig.hemiSky, lightingConfig.hemiGround, lightingConfig.hemiIntensity]}
           position={[0, 50, 0]}
         />
 
-        {/* Primary Sunlight with Soft Shadows */}
+        {/* Primary Sunlight with Soft PCF Shadows & Acne Prevention */}
         <directionalLight
-          position={[14, 20, 12]}
-          intensity={1.3}
+          position={lightingConfig.sunPos}
+          color={lightingConfig.sunColor}
+          intensity={lightingConfig.sunIntensity}
           castShadow
           shadow-mapSize-width={2048}
           shadow-mapSize-height={2048}
@@ -64,14 +131,44 @@ export const Scene3D: React.FC = () => {
           shadow-camera-right={25}
           shadow-camera-top={25}
           shadow-camera-bottom={-25}
-          shadow-bias={-0.00015}
+          shadow-bias={-0.0005}
+          shadow-normalBias={0.02}
         />
 
-        {/* Soft Secondary Fill Light */}
+        {/* Secondary Soft Fill Light */}
         <directionalLight
-          position={[-12, 14, -10]}
-          intensity={0.45}
+          position={lightingConfig.fillPos}
+          color={lightingConfig.fillColor}
+          intensity={lightingConfig.fillIntensity}
         />
+
+        {/* Cozy Warm Interior Lights in Night Mode */}
+        {preset === 'night' && (
+          <>
+            {rooms.map((room) => (
+              <pointLight
+                key={`room_light_${room.id}`}
+                position={[room.x, Math.max(1.8, ceilingHeight - 0.35), room.y]}
+                color="#fef08a"
+                intensity={1.8}
+                distance={9.0}
+                decay={2.0}
+              />
+            ))}
+            {furniture
+              .filter((f) => f.catalogId === 'furn_floor_lamp')
+              .map((lamp) => (
+                <pointLight
+                  key={`lamp_light_${lamp.id}`}
+                  position={[lamp.position[0], 1.65, lamp.position[2]]}
+                  color="#fef3c7"
+                  intensity={2.2}
+                  distance={6.5}
+                  decay={2.0}
+                />
+              ))}
+          </>
+        )}
 
         {/* Floor, Ceiling, Ground Plane & Room Labels */}
         <FloorAndCeiling
@@ -99,8 +196,8 @@ export const Scene3D: React.FC = () => {
 
         {/* Soft Ambient Contact Shadows at Floor Level */}
         <ContactShadows
-          position={[0, -0.155, 0]}
-          opacity={0.65}
+          position={[0, -0.015, 0]}
+          opacity={lightingConfig.contactShadowOpacity}
           scale={50}
           blur={1.5}
           far={10}

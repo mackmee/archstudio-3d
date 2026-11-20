@@ -3,6 +3,7 @@ import {
   BackgroundImage,
   CalibrationState,
   EditorMode,
+  LightingPreset,
   Opening,
   PlacedFurniture,
   Point2D,
@@ -69,7 +70,11 @@ interface FloorplanStore extends ProjectState {
   toggleCeiling3D: () => void;
   toggleRoomLabels3D: () => void;
   setCameraMode3D: (mode: 'orbit' | 'walkthrough') => void;
+  setLightingPreset: (preset: LightingPreset) => void;
+  toggleCutawayMode: () => void;
+  setFocusedRoomId: (id: string | null) => void;
   setSelected3DTarget: (target: Selected3DTarget | null) => void;
+  applyMaterialToRoom: (roomId: string, materialId: string) => void;
 
   // Furniture Actions
   addFurniture: (item: Omit<PlacedFurniture, 'id'>) => string;
@@ -277,6 +282,9 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       showCeiling: false,
       showRoomLabels: true,
       cameraMode: 'orbit',
+      lightingPreset: 'day',
+      cutawayMode: false,
+      focusedRoomId: null,
     },
     selected3DTarget: null,
     isTransformDragging: false,
@@ -299,7 +307,55 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       set((s) => ({
         view3dSettings: { ...s.view3dSettings, cameraMode: mode },
       })),
+    setLightingPreset: (preset) =>
+      set((s) => ({
+        view3dSettings: { ...s.view3dSettings, lightingPreset: preset },
+      })),
+    toggleCutawayMode: () =>
+      set((s) => ({
+        view3dSettings: { ...s.view3dSettings, cutawayMode: !s.view3dSettings.cutawayMode },
+      })),
+    setFocusedRoomId: (id) =>
+      set((s) => ({
+        view3dSettings: { ...s.view3dSettings, focusedRoomId: id },
+      })),
     setSelected3DTarget: (target) => set({ selected3DTarget: target }),
+
+    applyMaterialToRoom: (roomId, materialId) => {
+      pushHistory();
+      const state = get();
+      const room = state.rooms.find((r) => r.id === roomId);
+      if (!room) return;
+
+      const updatedWalls = state.walls.map((wall) => {
+        const dx = wall.end.x - wall.start.x;
+        const dy = wall.end.y - wall.start.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq < 0.001) return wall;
+
+        const t = Math.max(0, Math.min(1, ((room.x - wall.start.x) * dx + (room.y - wall.start.y) * dy) / lenSq));
+        const projX = wall.start.x + t * dx;
+        const projY = wall.start.y + t * dy;
+        const dist = Math.hypot(room.x - projX, room.y - projY);
+
+        if (dist <= 5.5) {
+          const nLeftX = -dy;
+          const nLeftY = dx;
+          const toRoomX = room.x - wall.start.x;
+          const toRoomY = room.y - wall.start.y;
+          const sideDot = toRoomX * nLeftX + toRoomY * nLeftY;
+
+          if (sideDot >= 0) {
+            return { ...wall, materialLeftId: materialId };
+          } else {
+            return { ...wall, materialRightId: materialId };
+          }
+        }
+        return wall;
+      });
+
+      set({ walls: updatedWalls });
+    },
 
     // Furniture Actions
     addFurniture: (item) => {

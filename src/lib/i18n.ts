@@ -256,6 +256,20 @@ export const translations = {
     aiCancel: 'Bekor qilish',
     aiNoBlueprintAlert: 'Iltimos, avval xonadon reja-chizmasi rasmini yuklang.',
     aiScanError: 'AI tahlilida xatolik yuz berdi. Iltimos qaytadan urinib ko‘ring.',
+
+    // 3D Studio Upgrade (Stage 4)
+    lightingPresetDay: 'Kungi',
+    lightingPresetSunset: 'Shom',
+    lightingPresetNight: 'Tungi',
+    cutawayToggle: 'Kesma (Cutaway)',
+    cutawayHint: 'Devorlar va shift shaffofligi',
+    roomJumpAll: 'Umumiy reja',
+    eyeDropperTool: 'Pipetka',
+    eyeDropperActive: 'Material olish uchun devor yoki polni bosing',
+    eyeDropperSampled: 'Material olindi:',
+    applyToRoomBtn: 'Xona devorlariga qo‘llash',
+    applyToRoomSuccess: 'Xona devorlariga muvaffaqiyatli qo‘llandi!',
+    applyToAllWallsBtn: 'Barcha devorlarga qo‘llash',
   },
   ru: {
     // Brand & Header
@@ -512,6 +526,20 @@ export const translations = {
     aiCancel: 'Отмена',
     aiNoBlueprintAlert: 'Пожалуйста, сначала загрузите изображение плана квартиры.',
     aiScanError: 'Ошибка при анализе ИИ. Пожалуйста, попробуйте еще раз.',
+
+    // 3D Studio Upgrade (Stage 4)
+    lightingPresetDay: 'Дневной',
+    lightingPresetSunset: 'Закат',
+    lightingPresetNight: 'Ночной',
+    cutawayToggle: 'Разрез (Cutaway)',
+    cutawayHint: 'Прозрачность стен и потолка',
+    roomJumpAll: 'Общий вид',
+    eyeDropperTool: 'Пипетка',
+    eyeDropperActive: 'Нажмите на стену или пол, чтобы взять материал',
+    eyeDropperSampled: 'Материал выбран:',
+    applyToRoomBtn: 'Применить к стенам комнаты',
+    applyToRoomSuccess: 'Успешно применено к стенам комнаты!',
+    applyToAllWallsBtn: 'Применить ко всем стенам',
   },
 };
 

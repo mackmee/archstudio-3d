@@ -29,6 +29,7 @@ export const FloorAndCeiling: React.FC<FloorAndCeilingProps> = ({
     ceilingMaterialId,
     selected3DTarget,
     setSelected3DTarget,
+    view3dSettings,
   } = useFloorplanStore();
 
   const isFloorSelected = selected3DTarget?.type === 'floor';
@@ -103,7 +104,7 @@ export const FloorAndCeiling: React.FC<FloorAndCeilingProps> = ({
       </mesh>
 
       {/* 2. Toggleable Ceiling Slab */}
-      {showCeiling && (
+      {showCeiling && !view3dSettings.cutawayMode && (
         <mesh
           position={[bounds.centerX, ceilingHeight + 0.05, bounds.centerZ]}
           castShadow

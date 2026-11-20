@@ -86,10 +86,15 @@ export interface ReadinessChecklist {
   isReadyFor3D: boolean;
 }
 
+export type LightingPreset = 'day' | 'sunset' | 'night';
+
 export interface View3DSettings {
   showCeiling: boolean;
   showRoomLabels: boolean;
   cameraMode: 'orbit' | 'walkthrough';
+  lightingPreset: LightingPreset;
+  cutawayMode: boolean;
+  focusedRoomId: string | null;
 }
 
 export interface Selected3DTarget {

@@ -142,13 +142,18 @@ export const FloorAndCeiling: React.FC<FloorAndCeilingProps> = ({
 
       {/* 4. Floating 3D Room Label Sprites (Pure WebGL - Zero DOM / Portal memory leaks) */}
       {showRoomLabels &&
-        rooms.map((room) => (
-          <RoomLabelSprite
-            key={room.id}
-            name={room.name}
-            position={[room.x, 0.42, room.y]}
-          />
-        ))}
+        rooms
+          .filter(
+            (room) =>
+              !view3dSettings.focusedRoomId || room.id === view3dSettings.focusedRoomId
+          )
+          .map((room) => (
+            <RoomLabelSprite
+              key={room.id}
+              name={room.name}
+              position={[room.x, 0.42, room.y]}
+            />
+          ))}
     </group>
   );
 };

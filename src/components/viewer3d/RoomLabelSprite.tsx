@@ -118,7 +118,7 @@ export const RoomLabelSprite: React.FC<RoomLabelSpriteProps> = ({ name, position
       <spriteMaterial
         map={texture}
         transparent
-        depthTest={false}
+        depthTest={true}
         depthWrite={false}
         sizeAttenuation
       />

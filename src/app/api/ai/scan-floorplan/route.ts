@@ -131,16 +131,24 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are a world-class architectural AI engineer specialized in parsing 2D floor plans, blueprints, and architectural layouts into precise CAD vector entities.
 Your job is to thoroughly detect:
-1. All structural walls: both perimeter exterior walls (thickness ~0.20-0.25m) and interior partition walls (thickness ~0.12-0.15m). Interior partition walls must connect cleanly to outer walls or other partition walls (forming T-junctions or L-corners without floating gaps).
-2. All architectural openings:
-   - Doors ('door'): You MUST actively scan every room boundary (entry, bedrooms, bathrooms, kitchen, living room) for door openings and swing arcs. In an apartment, every interior room must have an access door! Typically width 0.8m - 1.0m, height 2.1m.
+1. Exact printed architectural dimensions:
+   - CAREFULLY examine the blueprint for printed dimension chains, numbers, and axis markings.
+   - Blueprints in CIS / Uzbekistan / Central Asia are almost always dimensioned in MILLIMETERS (e.g. 20 000, 25 000, 5 500, 4 200, 3 500, 2 400).
+   - Divide millimeter numbers by 1000 to convert to meters (e.g. 20 000 mm = 20.0 m, 25 000 mm = 25.0 m).
+   - Use the total outermost horizontal and vertical dimension numbers as the authoritative ground truth for "estimatedWidthMeters" and "estimatedHeightMeters" instead of guessing!
+   - If no dimension numbers are printed, calculate dimensions based on ${
+     targetAreaSqm ? `the user's target area of ~${targetAreaSqm} m²` : 'standard residential architectural scale'
+   }.
+2. All structural walls across the ENTIRE blueprint:
+   - Trace ALL walled structures shown: both the primary house and any auxiliary buildings (e.g., Garaj / Garage, Yozgi oshxona / Summer kitchen, Omborxona / Storage, Boiler room, Courtyard boundary walls). Do NOT skip secondary structures!
+   - Perimeter exterior walls (thickness ~0.20-0.25m) and interior partition walls (thickness ~0.12-0.15m). Interior partition walls must connect cleanly to outer walls or other partition walls (forming T-junctions or L-corners without floating gaps).
+3. All architectural openings:
+   - Doors ('door'): You MUST actively scan every room boundary (entry, bedrooms, bathrooms, kitchen, living room, garage, storage) for door openings and swing arcs. In an architectural layout, every interior room must have an access door! Typically width 0.8m - 1.0m, height 2.1m.
    - Windows ('window'): Scan exterior walls for parallel double lines or window glass markings. Typically width 1.2m - 1.8m, height 1.4m, sillHeight 0.9m.
-3. Room labels with their approximate 2D center positions and standard names in ${
+4. Room labels with their approximate 2D center positions and standard names in ${
       language === 'uz' ? 'Uzbek Latin' : 'Russian'
-    }.
-4. The estimated bounding dimensions of the entire apartment in meters (e.g. width: 8.5m to 14m, height: 6m to 12m, based on the ${
-      targetAreaSqm ? `target area ~${targetAreaSqm} m²` : 'standard residential scale'
-    }).
+    }. Include names for auxiliary rooms (e.g. Garaj, Yozgi oshxona, Omborxona).
+5. The estimated bounding dimensions of the entire drawn property in meters.
 
 CRITICAL RULES FOR COORDINATES:
 - Return all coordinates as NORMALIZED FLOATS strictly between 0.00 and 1.00 relative to the image bounding box.
@@ -277,7 +285,12 @@ Return ONLY valid JSON matching this schema:
 
     let parsed: AiFloorplanResponse;
     try {
-      parsed = JSON.parse(candidateText);
+      const cleanJson = candidateText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      parsed = JSON.parse(cleanJson);
     } catch {
       console.error('Failed to parse Gemini candidate text:', candidateText);
       return NextResponse.json(
@@ -291,9 +304,13 @@ Return ONLY valid JSON matching this schema:
     let estW = parsed.estimatedWidthMeters || 10.0;
     let estH = parsed.estimatedHeightMeters || estW * aspect;
 
-    // Sanity bounds check on meters
-    if (estW < 3 || estW > 40) estW = 10.0;
-    if (estH < 3 || estH > 40) estH = estW * aspect;
+    // Sanity bounds check on meters (accommodates large 20m x 25m or larger single-family homes/lots)
+    if (estW < 2 || estW > 80) {
+      estW = targetAreaSqm ? Math.sqrt(targetAreaSqm / aspect) : 20.0;
+    }
+    if (estH < 2 || estH > 80) {
+      estH = estW * aspect;
+    }
 
     const pixelsPerMeter = imageWidth / estW;
 

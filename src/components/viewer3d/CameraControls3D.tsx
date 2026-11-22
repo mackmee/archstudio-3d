@@ -20,6 +20,7 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
   mode,
   walls,
   rooms,
+  ceilingHeight = 2.8,
   resetSignal = 0,
 }) => {
   const { gl } = useThree();
@@ -177,22 +178,26 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
           walls.forEach((w) => {
             const midX = (w.start.x + w.end.x) / 2;
             const midY = (w.start.y + w.end.y) / 2;
-            if (Math.hypot(room.x - midX, room.y - midY) < 4.5) {
+            if (Math.hypot(room.x - midX, room.y - midY) < 5.0) {
               minX = Math.min(minX, w.start.x, w.end.x);
               maxX = Math.max(maxX, w.start.x, w.end.x);
               minY = Math.min(minY, w.start.y, w.end.y);
               maxY = Math.max(maxY, w.start.y, w.end.y);
             }
           });
-          const roomSpanX = isFinite(minX) && isFinite(maxX)
-            ? Math.max(1.5, Math.min(3.2, (maxX - minX) * 0.42))
-            : 2.2;
-          const roomSpanZ = isFinite(minY) && isFinite(maxY)
-            ? Math.max(1.5, Math.min(3.2, (maxY - minY) * 0.42))
-            : 2.2;
+          const spanX = isFinite(minX) && isFinite(maxX) ? maxX - minX : 4.0;
+          const spanZ = isFinite(minY) && isFinite(maxY) ? maxY - minY : 4.0;
+          const roomSpan = Math.max(spanX, spanZ);
 
-          const targetPos = new THREE.Vector3(room.x, 0.85, room.y);
-          const camPos = new THREE.Vector3(room.x + roomSpanX, 2.25, room.y + roomSpanZ);
+          // Elevated 45° cutaway dollhouse inspection distance:
+          // Pull back so entire room is visible without camera clipping into walls
+          const inspectDist = Math.max(4.8, roomSpan * 1.35);
+          const targetPos = new THREE.Vector3(room.x, 0.8, room.y);
+          const camPos = new THREE.Vector3(
+            room.x + inspectDist * 0.707,
+            Math.max(3.8, ceilingHeight * 1.35),
+            room.y + inspectDist * 0.707
+          );
 
           if (orbitRef.current) {
             orbitRef.current.target.lerp(targetPos, 0.08);
@@ -255,8 +260,8 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
         enableDamping
         dampingFactor={0.06}
         maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={0.8}
-        maxDistance={50.0}
+        minDistance={1.0}
+        maxDistance={45.0}
       />
     );
   }

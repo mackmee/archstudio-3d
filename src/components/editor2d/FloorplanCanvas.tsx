@@ -358,9 +358,19 @@ export const FloorplanCanvas: React.FC = () => {
         ctx.stroke();
       }
 
-      // Professional Architectural Dimension Line with 45° Tick Marks
+      // Professional Architectural Dimension Line with 45° Tick Marks (Adaptive LOD)
       const wallLen = distance(wall.start, wall.end);
-      if (wallLen > 0.35) {
+      const minLenForDim = isSelected
+        ? 0.3
+        : viewport.zoom < 0.6
+        ? 3.0
+        : viewport.zoom < 0.85
+        ? 2.0
+        : viewport.zoom < 1.15
+        ? 1.2
+        : 0.5;
+
+      if (wallLen >= minLenForDim) {
         const wallAngle = Math.atan2(y2 - y1, x2 - x1);
         const normalX = -Math.sin(wallAngle);
         const normalY = Math.cos(wallAngle);

@@ -97,8 +97,8 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
           const perpDist = Math.abs(wx * -uz + wz * ux);
 
           // If wall sits directly in line of sight between camera and target room
-          if (t > 0.8 && t < camTargetDist - 0.3 && perpDist < wallHalfLen + 1.2) {
-            targetOpacity = 0.2; // Smooth ghosting so interior is completely visible
+          if (t > 0.8 && t < camTargetDist - 0.3 && perpDist < wallHalfLen + 1.3) {
+            targetOpacity = 0.15; // Smooth ghosting so interior is completely visible
           }
         }
       } else {

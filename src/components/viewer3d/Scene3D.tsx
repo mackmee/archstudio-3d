@@ -6,6 +6,7 @@ import { Canvas } from '@react-three/fiber';
 import { ContactShadows } from '@react-three/drei';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { WallMesh3D } from './WallMesh3D';
+import { CornerPillars3D } from './CornerPillars3D';
 import { FloorAndCeiling } from './FloorAndCeiling';
 import { FurnitureMesh3D } from './FurnitureMesh3D';
 import { CameraControls3D } from './CameraControls3D';
@@ -188,6 +189,9 @@ export const Scene3D: React.FC = () => {
             ceilingHeight={ceilingHeight}
           />
         ))}
+
+        {/* Seamless 3D Wall Corner Pillars & Baseboard Corner Wraps */}
+        <CornerPillars3D walls={walls} ceilingHeight={ceilingHeight} />
 
         {/* Placed 3D Furniture & Curtains */}
         {furniture.map((item) => (

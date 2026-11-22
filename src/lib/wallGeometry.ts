@@ -383,3 +383,89 @@ export function estimateRoomArea(room: Room, walls: Wall[]): number {
 
   return Number(Math.max(4.0, Math.min(50.0, fallbackArea)).toFixed(1));
 }
+
+/**
+ * Identifies all wall segments bounding a given room and determines which
+ * exact face (inwardSide: 'left' or 'right') faces directly into that room.
+ */
+export function getRoomBoundingWalls(
+  room: Room,
+  walls: Wall[]
+): Array<{ wallId: string; inwardSide: 'left' | 'right' }> {
+  const numRays = 36;
+  const maxRayDist = 14.0;
+  const hitMap = new Map<string, { inwardSide: 'left' | 'right' }>();
+
+  for (let k = 0; k < numRays; k++) {
+    const angle = (2 * Math.PI * k) / numRays;
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+
+    let closestDist = maxRayDist;
+    let closestWall: Wall | null = null;
+
+    for (const wall of walls) {
+      const v1x = room.x - wall.start.x;
+      const v1y = room.y - wall.start.y;
+      const v2x = wall.end.x - wall.start.x;
+      const v2y = wall.end.y - wall.start.y;
+      const v3x = -dirY;
+      const v3y = dirX;
+
+      const dot = v2x * v3x + v2y * v3y;
+      if (Math.abs(dot) < 1e-6) continue;
+
+      const t1 = (v2x * v1y - v2y * v1x) / dot;
+      const t2 = (v1x * v3x + v1y * v3y) / dot;
+
+      if (t1 > 0.05 && t2 >= -0.02 && t2 <= 1.02) {
+        if (t1 < closestDist) {
+          closestDist = t1;
+          closestWall = wall;
+        }
+      }
+    }
+
+    if (closestWall && closestDist < maxRayDist) {
+      if (!hitMap.has(closestWall.id)) {
+        const dx = closestWall.end.x - closestWall.start.x;
+        const dy = closestWall.end.y - closestWall.start.y;
+        // Normal to left: (-dy, dx)
+        const nLeftX = -dy;
+        const nLeftY = dx;
+        const toRoomX = room.x - (closestWall.start.x + closestWall.end.x) / 2;
+        const toRoomY = room.y - (closestWall.start.y + closestWall.end.y) / 2;
+        const dotProd = toRoomX * nLeftX + toRoomY * nLeftY;
+        hitMap.set(closestWall.id, {
+          inwardSide: dotProd >= 0 ? 'left' : 'right',
+        });
+      }
+    }
+  }
+
+  // Also include any nearby wall segment whose midpoint is close to room (< 3.2m)
+  for (const wall of walls) {
+    if (!hitMap.has(wall.id)) {
+      const midX = (wall.start.x + wall.end.x) / 2;
+      const midY = (wall.start.y + wall.end.y) / 2;
+      const dist = Math.hypot(room.x - midX, room.y - midY);
+      if (dist <= 3.2) {
+        const dx = wall.end.x - wall.start.x;
+        const dy = wall.end.y - wall.start.y;
+        const nLeftX = -dy;
+        const nLeftY = dx;
+        const toRoomX = room.x - midX;
+        const toRoomY = room.y - midY;
+        const dotProd = toRoomX * nLeftX + toRoomY * nLeftY;
+        hitMap.set(wall.id, {
+          inwardSide: dotProd >= 0 ? 'left' : 'right',
+        });
+      }
+    }
+  }
+
+  return Array.from(hitMap.entries()).map(([wallId, { inwardSide }]) => ({
+    wallId,
+    inwardSide,
+  }));
+}

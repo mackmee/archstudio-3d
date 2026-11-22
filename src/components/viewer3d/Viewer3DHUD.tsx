@@ -18,6 +18,8 @@ import {
   Moon,
   Scissors,
   Compass,
+  Camera,
+  Scan,
 } from 'lucide-react';
 
 interface Viewer3DHUDProps {
@@ -32,6 +34,8 @@ export const Viewer3DHUD: React.FC<Viewer3DHUDProps> = ({ onResetCamera }) => {
     setLightingPreset,
     toggleCutawayMode,
     setFocusedRoomId,
+    toggleFovMode,
+    toggleAutoHideBlockingWalls,
     toggleCeiling3D,
     toggleRoomLabels3D,
     setCurrentMode,
@@ -161,6 +165,38 @@ export const Viewer3DHUD: React.FC<Viewer3DHUDProps> = ({ onResetCamera }) => {
             <Moon className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* FOV Toggle: Standard vs Wide Angle */}
+        <button
+          onClick={toggleFovMode}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            view3dSettings.fovMode === 'wide'
+              ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 shadow-xs'
+              : 'bg-slate-100 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-slate-200 dark:border-slate-800'
+          }`}
+          title={getTranslation(language, 'fovToggleTooltip')}
+        >
+          <Camera className="w-3.5 h-3.5 text-cyan-500" />
+          <span className="hidden md:inline">
+            {view3dSettings.fovMode === 'wide'
+              ? getTranslation(language, 'fovWide')
+              : getTranslation(language, 'fovStandard')}
+          </span>
+        </button>
+
+        {/* Auto-Hide Blocking Front Walls Toggle */}
+        <button
+          onClick={toggleAutoHideBlockingWalls}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            view3dSettings.autoHideBlockingWalls
+              ? 'bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-500/40 shadow-xs'
+              : 'bg-slate-100 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-slate-200 dark:border-slate-800'
+          }`}
+          title={getTranslation(language, 'autoHideWallsDesc')}
+        >
+          <Scan className="w-3.5 h-3.5 text-teal-500" />
+          <span className="hidden md:inline">{getTranslation(language, 'autoHideWalls')}</span>
+        </button>
 
         {/* Cutaway / Dollhouse View Button */}
         <button

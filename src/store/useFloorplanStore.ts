@@ -18,7 +18,7 @@ import {
   MarketPresetType,
 } from '@/types/floorplan';
 import { distance } from '@/lib/geometry';
-import { splitWallsAtIntersections } from '@/lib/wallGeometry';
+import { splitWallsAtIntersections, getRoomBoundingWalls } from '@/lib/wallGeometry';
 import { getUzbekistanMarketPreset } from '@/lib/estimator';
 import {
   DEFAULT_FLOOR_MATERIAL_ID,
@@ -88,8 +88,10 @@ interface FloorplanStore extends ProjectState {
   setLightingPreset: (preset: LightingPreset) => void;
   toggleCutawayMode: () => void;
   setFocusedRoomId: (id: string | null) => void;
+  toggleFovMode: () => void;
+  toggleAutoHideBlockingWalls: () => void;
   setSelected3DTarget: (target: Selected3DTarget | null) => void;
-  applyMaterialToRoom: (roomId: string, materialId: string) => void;
+  applyMaterialToRoom: (roomId: string, materialId: string) => number;
 
   // Furniture Actions
   addFurniture: (item: Omit<PlacedFurniture, 'id'>) => string;
@@ -337,6 +339,8 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       lightingPreset: 'day',
       cutawayMode: false,
       focusedRoomId: null,
+      fovMode: 'wide',
+      autoHideBlockingWalls: true,
     },
     selected3DTarget: null,
     isTransformDragging: false,
@@ -371,42 +375,46 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       set((s) => ({
         view3dSettings: { ...s.view3dSettings, focusedRoomId: id },
       })),
+    toggleFovMode: () =>
+      set((s) => ({
+        view3dSettings: {
+          ...s.view3dSettings,
+          fovMode: s.view3dSettings.fovMode === 'wide' ? 'standard' : 'wide',
+        },
+      })),
+    toggleAutoHideBlockingWalls: () =>
+      set((s) => ({
+        view3dSettings: {
+          ...s.view3dSettings,
+          autoHideBlockingWalls: !s.view3dSettings.autoHideBlockingWalls,
+        },
+      })),
     setSelected3DTarget: (target) => set({ selected3DTarget: target }),
 
     applyMaterialToRoom: (roomId, materialId) => {
-      pushHistory();
       const state = get();
       const room = state.rooms.find((r) => r.id === roomId);
-      if (!room) return;
+      if (!room) return 0;
 
+      pushHistory();
+      const boundingWalls = getRoomBoundingWalls(room, state.walls);
+      const wallFaceMap = new Map(boundingWalls.map((bw) => [bw.wallId, bw.inwardSide]));
+
+      let facesUpdated = 0;
       const updatedWalls = state.walls.map((wall) => {
-        const dx = wall.end.x - wall.start.x;
-        const dy = wall.end.y - wall.start.y;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq < 0.001) return wall;
+        const inwardSide = wallFaceMap.get(wall.id);
+        if (!inwardSide) return wall;
 
-        const t = Math.max(0, Math.min(1, ((room.x - wall.start.x) * dx + (room.y - wall.start.y) * dy) / lenSq));
-        const projX = wall.start.x + t * dx;
-        const projY = wall.start.y + t * dy;
-        const dist = Math.hypot(room.x - projX, room.y - projY);
-
-        if (dist <= 5.5) {
-          const nLeftX = -dy;
-          const nLeftY = dx;
-          const toRoomX = room.x - wall.start.x;
-          const toRoomY = room.y - wall.start.y;
-          const sideDot = toRoomX * nLeftX + toRoomY * nLeftY;
-
-          if (sideDot >= 0) {
-            return { ...wall, materialLeftId: materialId };
-          } else {
-            return { ...wall, materialRightId: materialId };
-          }
+        facesUpdated++;
+        if (inwardSide === 'left') {
+          return { ...wall, materialLeftId: materialId };
+        } else {
+          return { ...wall, materialRightId: materialId };
         }
-        return wall;
       });
 
       set({ walls: updatedWalls });
+      return facesUpdated;
     },
 
     // Furniture Actions

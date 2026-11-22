@@ -127,6 +127,24 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
   useFrame((state, delta) => {
     const activeCamera = state.camera;
 
+    // Dynamic Wide-Angle Architectural FOV
+    if ('fov' in activeCamera && typeof (activeCamera as THREE.PerspectiveCamera).fov === 'number') {
+      const pCam = activeCamera as THREE.PerspectiveCamera;
+      let targetFov = 55;
+      if (mode === 'walkthrough') {
+        targetFov = 72;
+      } else if (view3dSettings.focusedRoomId) {
+        targetFov = view3dSettings.fovMode === 'wide' ? 70 : 58;
+      } else {
+        targetFov = view3dSettings.fovMode === 'wide' ? 65 : 55;
+      }
+
+      if (Math.abs(pCam.fov - targetFov) > 0.1) {
+        pCam.fov = THREE.MathUtils.lerp(pCam.fov, targetFov, 0.08);
+        pCam.updateProjectionMatrix();
+      }
+    }
+
     // Handle initial placement on mode change or reset
     if (needsPositionInit.current) {
       needsPositionInit.current = false;
@@ -154,8 +172,27 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
       const room = rooms.find((r) => r.id === view3dSettings.focusedRoomId);
       if (room) {
         if (mode === 'orbit') {
-          const targetPos = new THREE.Vector3(room.x, 1.2, room.y);
-          const camPos = new THREE.Vector3(room.x + 3.8, 4.2, room.y + 3.8);
+          // Calculate comfortable room-relative offset so camera is not trapped inside wall
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          walls.forEach((w) => {
+            const midX = (w.start.x + w.end.x) / 2;
+            const midY = (w.start.y + w.end.y) / 2;
+            if (Math.hypot(room.x - midX, room.y - midY) < 4.5) {
+              minX = Math.min(minX, w.start.x, w.end.x);
+              maxX = Math.max(maxX, w.start.x, w.end.x);
+              minY = Math.min(minY, w.start.y, w.end.y);
+              maxY = Math.max(maxY, w.start.y, w.end.y);
+            }
+          });
+          const roomSpanX = isFinite(minX) && isFinite(maxX)
+            ? Math.max(1.5, Math.min(3.2, (maxX - minX) * 0.42))
+            : 2.2;
+          const roomSpanZ = isFinite(minY) && isFinite(maxY)
+            ? Math.max(1.5, Math.min(3.2, (maxY - minY) * 0.42))
+            : 2.2;
+
+          const targetPos = new THREE.Vector3(room.x, 0.85, room.y);
+          const camPos = new THREE.Vector3(room.x + roomSpanX, 2.25, room.y + roomSpanZ);
 
           if (orbitRef.current) {
             orbitRef.current.target.lerp(targetPos, 0.08);
@@ -218,8 +255,8 @@ export const CameraControls3D: React.FC<CameraControls3DProps> = ({
         enableDamping
         dampingFactor={0.06}
         maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={2.0}
-        maxDistance={45.0}
+        minDistance={0.8}
+        maxDistance={50.0}
       />
     );
   }

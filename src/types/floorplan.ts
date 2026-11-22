@@ -100,6 +100,8 @@ export interface View3DSettings {
   lightingPreset: LightingPreset;
   cutawayMode: boolean;
   focusedRoomId: string | null;
+  fovMode: 'standard' | 'wide'; // Standard (55°) vs Wide (70-72°)
+  autoHideBlockingWalls: boolean; // Auto-fade walls between camera and target
 }
 
 export interface Selected3DTarget {

@@ -443,19 +443,21 @@ export const DesignSidebar: React.FC = () => {
                           currentActiveMaterialId ||
                           (categoryMaterials[0]?.id ?? 'wp_linen_beige');
                         if (activeTargetRoomId) {
-                          applyMaterialToRoom(activeTargetRoomId, matToApply);
+                          const updatedCount = applyMaterialToRoom(activeTargetRoomId, matToApply);
                           const rObj = rooms.find((r) => r.id === activeTargetRoomId);
                           setFeedbackMsg(
-                            `${rObj?.name || ''}: ${getTranslation(language, 'applyToRoomSuccess')}`
+                            language === 'uz'
+                              ? `✓ ${rObj?.name || 'Xona'}: ${updatedCount} ta ichki devor yuzasiga qo‘llandi`
+                              : `✓ ${rObj?.name || 'Комната'}: применено к ${updatedCount} внутренним стенам`
                           );
-                          setTimeout(() => setFeedbackMsg(null), 3000);
+                          setTimeout(() => setFeedbackMsg(null), 3500);
                         }
                       }}
-                      className="py-1.5 px-2.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[11px] font-medium flex items-center gap-1 transition shrink-0"
-                      title={getTranslation(language, 'applyToRoomBtn')}
+                      className="py-1.5 px-2.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold flex items-center gap-1 transition shrink-0"
+                      title={getTranslation(language, 'paintRoomOnlyBtn')}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>{getTranslation(language, 'applyToRoomBtn')}</span>
+                      <span>{getTranslation(language, 'paintRoomOnlyBtn')}</span>
                     </button>
                   </div>
                 )}

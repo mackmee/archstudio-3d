@@ -97,7 +97,7 @@ export const Scene3D: React.FC = () => {
       {/* 3D WebGL Canvas */}
       <Canvas
         shadows
-        camera={{ position: [10, 9, 10], fov: 48, near: 0.1, far: 200 }}
+        camera={{ position: [10, 9, 10], fov: 55, near: 0.1, far: 200 }}
         gl={{
           antialias: true,
           powerPreference: 'high-performance',

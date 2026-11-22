@@ -283,6 +283,12 @@ export const translations = {
     applyToRoomBtn: 'Xona devorlariga qo‘llash',
     applyToRoomSuccess: 'Xona devorlariga muvaffaqiyatli qo‘llandi!',
     applyToAllWallsBtn: 'Barcha devorlarga qo‘llash',
+    fovStandard: 'Standart (55°)',
+    fovWide: 'Keng burchak (72°)',
+    fovToggleTooltip: '3D ko‘rish burchagini o‘zgartirish (55° / 72°)',
+    autoHideWalls: 'Avto-shaffof',
+    autoHideWallsDesc: 'Kamerani to‘suvchi old devorlarni avtomatik shaffof qilish',
+    paintRoomOnlyBtn: 'Faqat shu xonani bo‘yash',
 
     // Stage 5: Room-by-Room Smart Estimator & Uzbekistan Market Localized Pricing
     tabSummaryBom: 'Umumiy Smeta (BOM)',
@@ -603,6 +609,12 @@ export const translations = {
     applyToRoomBtn: 'Применить к стенам комнаты',
     applyToRoomSuccess: 'Успешно применено к стенам комнаты!',
     applyToAllWallsBtn: 'Применить ко всем стенам',
+    fovStandard: 'Стандарт (55°)',
+    fovWide: 'Широкий угол (72°)',
+    fovToggleTooltip: 'Переключить угол обзора камеры (55° / 72°)',
+    autoHideWalls: 'Авто-скрытие',
+    autoHideWallsDesc: 'Автоматически делать прозрачными стены перед камерой',
+    paintRoomOnlyBtn: 'Покрасить только эту комнату',
 
     // Stage 5: Room-by-Room Smart Estimator & Uzbekistan Market Localized Pricing
     tabSummaryBom: 'Сводная Смета (BOM)',

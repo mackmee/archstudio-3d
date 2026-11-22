@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { Wall, Opening } from '@/types/floorplan';
 import { distance } from '@/lib/geometry';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
@@ -28,9 +29,22 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
   openings,
   ceilingHeight,
 }) => {
-  const { selected3DTarget, setSelected3DTarget, setSelectedId, view3dSettings } = useFloorplanStore();
-  const isSelected = selected3DTarget?.type === 'wall' && selected3DTarget.id === wall.id;
+  const {
+    selected3DTarget,
+    setSelected3DTarget,
+    setSelectedId,
+    view3dSettings,
+    rooms,
+  } = useFloorplanStore();
+
+  const isWallSelected = selected3DTarget?.type === 'wall' && selected3DTarget.id === wall.id;
+  const selectedSide = isWallSelected ? selected3DTarget?.side || 'both' : null;
   const cutawayMode = view3dSettings.cutawayMode;
+  const autoHideEnabled = view3dSettings.autoHideBlockingWalls && view3dSettings.cameraMode === 'orbit';
+
+  const [hoveredSide, setHoveredSide] = useState<'left' | 'right' | null>(null);
+  const [wallOpacity, setWallOpacity] = useState(1.0);
+  const opacityRef = useRef(1.0);
 
   const wallLen = useMemo(() => distance(wall.start, wall.end), [wall.start, wall.end]);
 
@@ -40,7 +54,80 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
     return Math.atan2(dy, dx);
   }, [wall.start, wall.end]);
 
-  // Materials definition for Side A (+Z) and Side B (-Z)
+  const wallMidX = (wall.start.x + wall.end.x) / 2;
+  const wallMidZ = (wall.start.y + wall.end.y) / 2;
+  const wallHalfLen = wallLen / 2;
+
+  // Auto-Hide Blocking Front Walls Logic
+  useFrame((state) => {
+    let targetOpacity = cutawayMode ? 0.35 : 1.0;
+
+    if (autoHideEnabled) {
+      const cam = state.camera.position;
+
+      // Determine look target (either focused room center or apartment center)
+      let targetX = wallMidX;
+      let targetZ = wallMidZ;
+
+      if (view3dSettings.focusedRoomId) {
+        const room = rooms.find((r) => r.id === view3dSettings.focusedRoomId);
+        if (room) {
+          targetX = room.x;
+          targetZ = room.y;
+        }
+      }
+
+      if (view3dSettings.focusedRoomId) {
+        // Checking against focused target room
+        const dx = targetX - cam.x;
+        const dz = targetZ - cam.z;
+        const camTargetDist = Math.hypot(dx, dz);
+
+        if (camTargetDist > 0.6) {
+          const ux = dx / camTargetDist;
+          const uz = dz / camTargetDist;
+
+          // Vector from camera to wall center
+          const wx = wallMidX - cam.x;
+          const wz = wallMidZ - cam.z;
+
+          // Projection along camera-target ray
+          const t = wx * ux + wz * uz;
+          // Perpendicular distance to ray
+          const perpDist = Math.abs(wx * -uz + wz * ux);
+
+          // If wall sits directly in line of sight between camera and target room
+          if (t > 0.8 && t < camTargetDist - 0.3 && perpDist < wallHalfLen + 1.2) {
+            targetOpacity = 0.2; // Smooth ghosting so interior is completely visible
+          }
+        }
+      } else {
+        // Orbit overview: fade front wall closest to camera if camera is at low/medium architectural angle
+        const toCamX = cam.x - wallMidX;
+        const toCamZ = cam.z - wallMidZ;
+        const distToCam = Math.hypot(toCamX, toCamZ);
+
+        if (cam.y > 1.0 && distToCam < 14.0) {
+          const camElevation = cam.y / distToCam;
+          if (camElevation < 0.65) {
+            const dx = wall.end.x - wall.start.x;
+            const dy = wall.end.y - wall.start.y;
+            const normDot = (toCamX * -dy + toCamZ * dx) / (distToCam * wallLen);
+            if (Math.abs(normDot) > 0.6 && distToCam < 8.5) {
+              targetOpacity = 0.25;
+            }
+          }
+        }
+      }
+    }
+
+    if (Math.abs(opacityRef.current - targetOpacity) > 0.015) {
+      opacityRef.current = THREE.MathUtils.lerp(opacityRef.current, targetOpacity, 0.12);
+      setWallOpacity(opacityRef.current);
+    }
+  });
+
+  // Materials definition for Side A (+Z / materialLeftId) and Side B (-Z / materialRightId)
   const matA = useMemo(
     () => getMaterialById(wall.materialLeftId || DEFAULT_WALL_MATERIAL_ID),
     [wall.materialLeftId]
@@ -141,37 +228,38 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
     return { wallBoxes: boxes, wallOpenings: rawOps };
   }, [wall, wallLen, openings, ceilingHeight]);
 
-  const handleClick = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
-    setSelected3DTarget({
-      type: 'wall',
-      id: wall.id,
-      side: 'both',
-    });
-    setSelectedId(wall.id);
-  };
-
   if (wallLen < 0.05) return null;
 
   return (
     <group
       position={[wall.start.x, 0, wall.start.y]}
       rotation={[0, -wallAngle, 0]}
-      onClick={handleClick}
     >
-      {/* Wall Segment Meshes */}
+      {/* Wall Segment Meshes & Baseboards */}
       {wallBoxes.map((box, idx) => (
         <WallSegmentMesh
           key={`box-${idx}`}
           box={box}
           matA={matA}
           matB={matB}
-          isSelected={isSelected}
-          cutawayMode={cutawayMode}
+          isSelected={isWallSelected}
+          selectedSide={selectedSide}
+          hoveredSide={hoveredSide}
+          opacity={wallOpacity}
+          onFacePointerMove={(side) => setHoveredSide(side)}
+          onFacePointerOut={() => setHoveredSide(null)}
+          onFaceClick={(side) => {
+            setSelected3DTarget({
+              type: 'wall',
+              id: wall.id,
+              side: side || 'both',
+            });
+            setSelectedId(wall.id);
+          }}
         />
       ))}
 
-      {/* Parametric 3D Doors & Windows */}
+      {/* Parametric 3D Doors & Windows with Casings & Reflective Glass */}
       {wallOpenings.map((op) => (
         <React.Fragment key={op.id}>
           {op.type === 'door' ? (
@@ -181,6 +269,7 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
               height={op.height}
               wallThickness={wall.thickness}
               flip={Boolean(op.flip)}
+              opacity={wallOpacity}
             />
           ) : (
             <Window3D
@@ -189,6 +278,7 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
               width={op.effWidth}
               height={op.height}
               wallThickness={wall.thickness}
+              opacity={wallOpacity}
             />
           )}
         </React.Fragment>
@@ -198,14 +288,19 @@ export const WallMesh3D: React.FC<WallMesh3DProps> = ({
 };
 
 // -------------------------------------------------------------
-// Wall Segment Mesh with 6-Face Dual-Sided Materials
+// Wall Segment Mesh with 6-Face Dual-Sided Materials & Baseboards
 // -------------------------------------------------------------
 interface WallSegmentMeshProps {
   box: WallSegmentBox;
   matA: ReturnType<typeof getMaterialById>;
   matB: ReturnType<typeof getMaterialById>;
   isSelected: boolean;
-  cutawayMode?: boolean;
+  selectedSide: 'left' | 'right' | 'both' | null;
+  hoveredSide: 'left' | 'right' | null;
+  opacity: number;
+  onFacePointerMove: (side: 'left' | 'right') => void;
+  onFacePointerOut: () => void;
+  onFaceClick: (side: 'left' | 'right') => void;
 }
 
 const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({
@@ -213,76 +308,180 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({
   matA,
   matB,
   isSelected,
-  cutawayMode = false,
+  selectedSide,
+  hoveredSide,
+  opacity,
+  onFacePointerMove,
+  onFacePointerOut,
+  onFaceClick,
 }) => {
   // Construct 6-material array:
-  // 0: +X, 1: -X, 2: +Y (top), 3: -Y (bottom), 4: +Z (Side A), 5: -Z (Side B)
+  // 0: +X, 1: -X, 2: +Y (top), 3: -Y (bottom), 4: +Z (Side A / Left), 5: -Z (Side B / Right)
   const materials = useMemo(() => {
-    const emissiveCol = isSelected ? new THREE.Color('#0284c7') : new THREE.Color(0);
-    const emissiveInt = isSelected ? 0.35 : 0;
+    const isSideASelected = isSelected && (selectedSide === 'both' || selectedSide === 'left');
+    const isSideBSelected = isSelected && (selectedSide === 'both' || selectedSide === 'right');
+    const isSideAHovered = hoveredSide === 'left';
+    const isSideBHovered = hoveredSide === 'right';
+
+    const emissiveA = isSideASelected
+      ? new THREE.Color('#0284c7')
+      : isSideAHovered
+      ? new THREE.Color('#38bdf8')
+      : new THREE.Color(0);
+    const emissiveIntA = isSideASelected ? 0.4 : isSideAHovered ? 0.25 : 0;
+
+    const emissiveB = isSideBSelected
+      ? new THREE.Color('#0284c7')
+      : isSideBHovered
+      ? new THREE.Color('#38bdf8')
+      : new THREE.Color(0);
+    const emissiveIntB = isSideBSelected ? 0.4 : isSideBHovered ? 0.25 : 0;
 
     // Edge/Trim material
     const edgeMat = new THREE.MeshStandardMaterial({
       color: matA.color,
       roughness: 0.8,
       metalness: 0.0,
-      emissive: emissiveCol,
-      emissiveIntensity: emissiveInt,
+      transparent: opacity < 0.98,
+      opacity,
+      depthWrite: opacity > 0.85,
     });
 
-    // Face A (+Z)
+    // Face A (+Z / Left)
     const texA = getScaledTexture(matA.id, box.width, box.height);
     const sideAMat = new THREE.MeshStandardMaterial({
       map: matA.type === 'procedural' ? texA : null,
       color: matA.color,
       roughness: matA.roughness,
       metalness: matA.metalness,
-      emissive: emissiveCol,
-      emissiveIntensity: emissiveInt,
+      emissive: emissiveA,
+      emissiveIntensity: emissiveIntA,
+      transparent: opacity < 0.98,
+      opacity,
+      depthWrite: opacity > 0.85,
     });
 
-    // Face B (-Z)
+    // Face B (-Z / Right)
     const texB = getScaledTexture(matB.id, box.width, box.height);
     const sideBMat = new THREE.MeshStandardMaterial({
       map: matB.type === 'procedural' ? texB : null,
       color: matB.color,
       roughness: matB.roughness,
       metalness: matB.metalness,
-      emissive: emissiveCol,
-      emissiveIntensity: emissiveInt,
+      emissive: emissiveB,
+      emissiveIntensity: emissiveIntB,
+      transparent: opacity < 0.98,
+      opacity,
+      depthWrite: opacity > 0.85,
     });
 
-    if (cutawayMode) {
-      edgeMat.transparent = true;
-      edgeMat.opacity = 0.35;
-      edgeMat.depthWrite = false;
-
-      sideAMat.transparent = true;
-      sideAMat.opacity = 0.35;
-      sideAMat.depthWrite = false;
-
-      sideBMat.transparent = true;
-      sideBMat.opacity = 0.35;
-      sideBMat.depthWrite = false;
-    }
-
     return [edgeMat, edgeMat, edgeMat, edgeMat, sideAMat, sideBMat];
-  }, [box.width, box.height, matA, matB, isSelected, cutawayMode]);
+  }, [
+    box.width,
+    box.height,
+    matA,
+    matB,
+    isSelected,
+    selectedSide,
+    hoveredSide,
+    opacity,
+  ]);
+
+  // Baseboard trim dimensions & anti-z-fighting offset
+  // Tiny 2.5mm offset away from wall surfaces to guarantee zero WebGL z-fighting
+  const baseboardHeight = 0.08; // 8cm
+  const baseboardThickness = 0.015; // 1.5cm
+  const zOffsetAntiZFighting = 0.0025; // 2.5mm offset
+  const baseboardZA = box.depth / 2 + baseboardThickness / 2 + zOffsetAntiZFighting;
+  const baseboardZB = -box.depth / 2 - baseboardThickness / 2 - zOffsetAntiZFighting;
+
+  const isFullHeightWall = box.height >= 2.0;
 
   return (
-    <mesh
-      position={[box.x, box.y, box.z]}
-      material={materials}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[box.width, box.height, box.depth]} />
-    </mesh>
+    <group>
+      {/* Main Wall Segment Box */}
+      <mesh
+        position={[box.x, box.y, box.z]}
+        material={materials}
+        castShadow
+        receiveShadow
+        onPointerMove={(e) => {
+          e.stopPropagation();
+          if (e.faceIndex !== undefined) {
+            // BoxGeometry faces: 8, 9 are +Z (Side A / Left); 10, 11 are -Z (Side B / Right)
+            if (e.faceIndex === 8 || e.faceIndex === 9) {
+              onFacePointerMove('left');
+            } else if (e.faceIndex === 10 || e.faceIndex === 11) {
+              onFacePointerMove('right');
+            }
+          }
+        }}
+        onPointerOut={(e) => {
+          e.stopPropagation();
+          onFacePointerOut();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.faceIndex !== undefined) {
+            if (e.faceIndex === 8 || e.faceIndex === 9) {
+              onFaceClick('left');
+            } else if (e.faceIndex === 10 || e.faceIndex === 11) {
+              onFaceClick('right');
+            } else {
+              onFaceClick('left');
+            }
+          } else {
+            onFaceClick('left');
+          }
+        }}
+      >
+        <boxGeometry args={[box.width, box.height, box.depth]} />
+      </mesh>
+
+      {/* Architectural Baseboards (Plintus) at floor level on solid walls */}
+      {isFullHeightWall && (
+        <>
+          {/* Side A Baseboard (+Z) */}
+          <mesh
+            position={[box.x, baseboardHeight / 2, baseboardZA]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[box.width, baseboardHeight, baseboardThickness]} />
+            <meshStandardMaterial
+              color="#f8fafc"
+              roughness={0.45}
+              metalness={0.05}
+              transparent={opacity < 0.98}
+              opacity={opacity}
+              depthWrite={opacity > 0.85}
+            />
+          </mesh>
+
+          {/* Side B Baseboard (-Z) */}
+          <mesh
+            position={[box.x, baseboardHeight / 2, baseboardZB]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[box.width, baseboardHeight, baseboardThickness]} />
+            <meshStandardMaterial
+              color="#f8fafc"
+              roughness={0.45}
+              metalness={0.05}
+              transparent={opacity < 0.98}
+              opacity={opacity}
+              depthWrite={opacity > 0.85}
+            />
+          </mesh>
+        </>
+      )}
+    </group>
   );
 };
 
 // -------------------------------------------------------------
-// 3D Architectural Door Component
+// 3D Architectural Door Component with Casings (Nalichnik)
 // -------------------------------------------------------------
 interface Door3DProps {
   x: number;
@@ -290,6 +489,7 @@ interface Door3DProps {
   height: number;
   wallThickness: number;
   flip: boolean;
+  opacity?: number;
 }
 
 const Door3D: React.FC<Door3DProps> = ({
@@ -298,6 +498,7 @@ const Door3D: React.FC<Door3DProps> = ({
   height,
   wallThickness,
   flip,
+  opacity = 1.0,
 }) => {
   const frameThickness = 0.04;
   const frameDepth = wallThickness + 0.02;
@@ -308,6 +509,11 @@ const Door3D: React.FC<Door3DProps> = ({
   const swingAngle = flip ? -Math.PI / 4.5 : Math.PI / 4.5;
   const hingeX = flip ? width / 2 - frameThickness : -width / 2 + frameThickness;
 
+  // Casing trim profile (Nalichnik) with 2.5mm offset to prevent z-fighting
+  const casingWidth = 0.06; // 6cm
+  const casingThickness = 0.012; // 1.2cm
+  const casingZOffset = wallThickness / 2 + 0.0025; // 2.5mm offset away from wall
+
   return (
     <group position={[x, 0, 0]}>
       {/* 1. Door Frame Jambs & Header */}
@@ -317,7 +523,12 @@ const Door3D: React.FC<Door3DProps> = ({
         receiveShadow
       >
         <boxGeometry args={[frameThickness, height, frameDepth]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.5} />
+        <meshStandardMaterial
+          color="#1e293b"
+          roughness={0.5}
+          transparent={opacity < 0.98}
+          opacity={opacity}
+        />
       </mesh>
 
       <mesh
@@ -326,7 +537,12 @@ const Door3D: React.FC<Door3DProps> = ({
         receiveShadow
       >
         <boxGeometry args={[frameThickness, height, frameDepth]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.5} />
+        <meshStandardMaterial
+          color="#1e293b"
+          roughness={0.5}
+          transparent={opacity < 0.98}
+          opacity={opacity}
+        />
       </mesh>
 
       <mesh
@@ -335,10 +551,47 @@ const Door3D: React.FC<Door3DProps> = ({
         receiveShadow
       >
         <boxGeometry args={[width, frameThickness, frameDepth]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.5} />
+        <meshStandardMaterial
+          color="#1e293b"
+          roughness={0.5}
+          transparent={opacity < 0.98}
+          opacity={opacity}
+        />
       </mesh>
 
-      {/* 2. Ajar Door Leaf with Pivot Hinge */}
+      {/* 2. Side A Casing (Nalichnik +Z) */}
+      <group position={[0, 0, casingZOffset]}>
+        <mesh position={[-width / 2 - casingWidth / 2 + 0.005, height / 2, casingThickness / 2]}>
+          <boxGeometry args={[casingWidth, height, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[width / 2 + casingWidth / 2 - 0.005, height / 2, casingThickness / 2]}>
+          <boxGeometry args={[casingWidth, height, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[0, height + casingWidth / 2 - 0.005, casingThickness / 2]}>
+          <boxGeometry args={[width + casingWidth * 2 - 0.01, casingWidth, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+      </group>
+
+      {/* 3. Side B Casing (Nalichnik -Z) */}
+      <group position={[0, 0, -casingZOffset]}>
+        <mesh position={[-width / 2 - casingWidth / 2 + 0.005, height / 2, -casingThickness / 2]}>
+          <boxGeometry args={[casingWidth, height, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[width / 2 + casingWidth / 2 - 0.005, height / 2, -casingThickness / 2]}>
+          <boxGeometry args={[casingWidth, height, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[0, height + casingWidth / 2 - 0.005, -casingThickness / 2]}>
+          <boxGeometry args={[width + casingWidth * 2 - 0.01, casingWidth, casingThickness]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.45} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+      </group>
+
+      {/* 4. Ajar Door Leaf with Pivot Hinge */}
       <group position={[hingeX, 0, 0]} rotation={[0, swingAngle, 0]}>
         <mesh
           position={[flip ? -doorWidth / 2 : doorWidth / 2, doorHeight / 2, 0]}
@@ -350,6 +603,8 @@ const Door3D: React.FC<Door3DProps> = ({
             color="#451a03"
             roughness={0.4}
             metalness={0.1}
+            transparent={opacity < 0.98}
+            opacity={opacity}
           />
         </mesh>
 
@@ -370,7 +625,7 @@ const Door3D: React.FC<Door3DProps> = ({
 };
 
 // -------------------------------------------------------------
-// 3D Architectural Window Component
+// 3D Architectural Window Component with Casings & Reflective Glass
 // -------------------------------------------------------------
 interface Window3DProps {
   x: number;
@@ -378,6 +633,7 @@ interface Window3DProps {
   width: number;
   height: number;
   wallThickness: number;
+  opacity?: number;
 }
 
 const Window3D: React.FC<Window3DProps> = ({
@@ -386,6 +642,7 @@ const Window3D: React.FC<Window3DProps> = ({
   width,
   height,
   wallThickness,
+  opacity = 1.0,
 }) => {
   const frameThickness = 0.04;
   const frameDepth = wallThickness + 0.01;
@@ -393,59 +650,84 @@ const Window3D: React.FC<Window3DProps> = ({
   const glassH = height - frameThickness * 2;
   const centerY = sillHeight + height / 2;
 
+  // Window casing with anti-z-fighting offset
+  const casingW = 0.05;
+  const casingThick = 0.012;
+  const casingZ = wallThickness / 2 + 0.0025;
+
   return (
     <group position={[x, centerY, 0]}>
-      <mesh
-        position={[-width / 2 + frameThickness / 2, 0, 0]}
-        castShadow
-        receiveShadow
-      >
+      {/* Outer Window Frame */}
+      <mesh position={[-width / 2 + frameThickness / 2, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[frameThickness, height, frameDepth]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
       </mesh>
 
-      <mesh
-        position={[width / 2 - frameThickness / 2, 0, 0]}
-        castShadow
-        receiveShadow
-      >
+      <mesh position={[width / 2 - frameThickness / 2, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[frameThickness, height, frameDepth]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
       </mesh>
 
-      <mesh
-        position={[0, height / 2 - frameThickness / 2, 0]}
-        castShadow
-        receiveShadow
-      >
+      <mesh position={[0, height / 2 - frameThickness / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, frameThickness, frameDepth]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
       </mesh>
 
-      <mesh
-        position={[0, -height / 2 + frameThickness / 2, 0]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[width, frameThickness, frameDepth + 0.03]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.4} />
+      {/* Extended Window Sill */}
+      <mesh position={[0, -height / 2 + frameThickness / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width + 0.06, frameThickness, frameDepth + 0.04]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
       </mesh>
 
+      {/* Side A Window Casing (Nalichnik +Z) */}
+      <group position={[0, 0, casingZ]}>
+        <mesh position={[-width / 2 - casingW / 2 + 0.005, 0, casingThick / 2]}>
+          <boxGeometry args={[casingW, height, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[width / 2 + casingW / 2 - 0.005, 0, casingThick / 2]}>
+          <boxGeometry args={[casingW, height, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[0, height / 2 + casingW / 2 - 0.005, casingThick / 2]}>
+          <boxGeometry args={[width + casingW * 2 - 0.01, casingW, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+      </group>
+
+      {/* Side B Window Casing (Nalichnik -Z) */}
+      <group position={[0, 0, -casingZ]}>
+        <mesh position={[-width / 2 - casingW / 2 + 0.005, 0, -casingThick / 2]}>
+          <boxGeometry args={[casingW, height, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[width / 2 + casingW / 2 - 0.005, 0, -casingThick / 2]}>
+          <boxGeometry args={[casingW, height, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+        <mesh position={[0, height / 2 + casingW / 2 - 0.005, -casingThick / 2]}>
+          <boxGeometry args={[width + casingW * 2 - 0.01, casingW, casingThick]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
+        </mesh>
+      </group>
+
+      {/* Center Mullion if wide */}
       {width > 1.0 && (
         <mesh position={[0, 0, 0]} castShadow>
           <boxGeometry args={[0.03, glassH, frameDepth * 0.9]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.4} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} transparent={opacity < 0.98} opacity={opacity} />
         </mesh>
       )}
 
+      {/* Architectural Reflective Tinted Glass */}
       <mesh position={[0, 0, 0]}>
-        <boxGeometry args={[glassW, glassH, 0.015]} />
+        <boxGeometry args={[glassW, glassH, 0.012]} />
         <meshStandardMaterial
           color="#bae6fd"
           transparent
-          opacity={0.35}
-          roughness={0.05}
-          metalness={0.1}
+          opacity={0.38}
+          roughness={0.08}
+          metalness={0.2}
         />
       </mesh>
     </group>

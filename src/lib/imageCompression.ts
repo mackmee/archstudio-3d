@@ -1,8 +1,8 @@
 /**
  * Client-side Blueprint Image Compressor using HTML5 Canvas.
  * Downscales multi-megapixel photos (e.g. 12-48MP smartphone blueprint captures)
- * to max 1024px dimension with 82% JPEG quality.
- * Reduces payload from 10-15MB down to ~150KB for rapid, error-free AI scanning.
+ * to max 1600px dimension with 88% JPEG quality.
+ * Reduces payload from 10-15MB down to ~350-450KB for rapid, high-fidelity AI scanning.
  */
 
 export interface CompressedImageResult {
@@ -14,8 +14,8 @@ export interface CompressedImageResult {
 
 export function compressBlueprintImage(
   input: File | Blob | string,
-  maxDimension = 1024,
-  quality = 0.82
+  maxDimension = 1600,
+  quality = 0.88
 ): Promise<CompressedImageResult> {
   return new Promise((resolve, reject) => {
     const processImage = (src: string) => {

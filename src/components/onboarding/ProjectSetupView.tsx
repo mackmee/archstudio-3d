@@ -57,8 +57,8 @@ export const ProjectSetupView: React.FC = () => {
     setScanError(null);
 
     try {
-      // Compress blueprint image to max 1024px to guarantee fast upload and prevent fetch timeouts
-      const compressed = await compressBlueprintImage(backgroundImage.url, 1024, 0.82);
+      // Compress blueprint image to max 1600px to guarantee fast upload and preserve CAD line fidelity
+      const compressed = await compressBlueprintImage(backgroundImage.url, 1600, 0.88);
 
       const response = await fetch('/api/ai/scan-floorplan', {
         method: 'POST',
@@ -102,7 +102,7 @@ export const ProjectSetupView: React.FC = () => {
       return;
     }
     try {
-      const compressed = await compressBlueprintImage(file, 1024, 0.82);
+      const compressed = await compressBlueprintImage(file, 1600, 0.88);
       setBackgroundImage({
         url: compressed.dataUrl,
         opacity: 0.7,

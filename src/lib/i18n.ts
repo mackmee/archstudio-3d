@@ -73,6 +73,19 @@ export const translations = {
     windowPlacingHint: 'Derazani devor ustiga bosing.',
     roomPlacingHint: 'Xona nomini qo‘yish uchun pol hududiga bosing.',
 
+    // 2D View Modes & CAD Tools
+    viewModeSplit: 'Yonma-yon',
+    viewModeSplitDesc: 'Asl chizma chapda, toza 2D CAD o‘ngda',
+    viewModeOverlay: 'Ustma-ust',
+    viewModeOverlayDesc: 'Chizma 2D devorlar ostida (1:1 qoplama)',
+    viewModeClean: 'Faqat 2D',
+    viewModeCleanDesc: 'Toza CAD maydoni (chizmasiz)',
+    blueprintOpacity: 'Chizma shaffofligi',
+    splitWallsBtn: 'Devorlarni ajratish',
+    splitWallsTooltip: 'T-tutashuvlarda devorlarni avtomatik kesish va eshik/derazalarni saqlash',
+    blueprintReferenceTitle: 'Asl Chizma (Mo‘ljal)',
+    blueprintPaneHint: 'Sichqoncha bilan ko‘chiring · G‘ildirakcha bilan masshtablang',
+
     // Calibration Modal
     calibrationTitle: 'Haqiqiy Masshtabni Kalibrlash',
     calibrationDesc: 'Chizmada tanlangan kesmaning haqiqiy hayotdagi uzunligini metrda kiriting:',
@@ -379,6 +392,19 @@ export const translations = {
     doorPlacingHint: 'Кликните по стене для установки двери.',
     windowPlacingHint: 'Кликните по стене для установки окна.',
     roomPlacingHint: 'Кликните внутри комнаты для добавления названия.',
+
+    // 2D View Modes & CAD Tools
+    viewModeSplit: 'Рядом',
+    viewModeSplitDesc: 'Исходный чертеж слева, чистый 2D CAD справа',
+    viewModeOverlay: 'Наложение',
+    viewModeOverlayDesc: 'Чертеж прямо под 2D стенами (1:1 совпадение)',
+    viewModeClean: 'Только 2D',
+    viewModeCleanDesc: 'Чистое рабочее поле CAD (без подложки)',
+    blueprintOpacity: 'Прозрачность чертежа',
+    splitWallsBtn: 'Разделить стены',
+    splitWallsTooltip: 'Автоматическое разделение стен в T-образных стыках с сохранением проемов',
+    blueprintReferenceTitle: 'Исходный Чертеж',
+    blueprintPaneHint: 'Перемещение мышью · Масштабирование колесиком',
 
     // Calibration Modal
     calibrationTitle: 'Калибровка Реального Масштаба',

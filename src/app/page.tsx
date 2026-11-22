@@ -36,6 +36,17 @@ const FloorplanCanvas = dynamic(
   { ssr: false }
 );
 
+// Dynamically import Blueprint Reference Pane with ssr: false
+const BlueprintReferencePane = dynamic(
+  () =>
+    import('@/components/editor2d/BlueprintReferencePane').then(
+      (mod) => mod.BlueprintReferencePane
+    ),
+  { ssr: false }
+);
+
+import { ViewModeBar } from '@/components/editor2d/ViewModeBar';
+
 // Dynamically import 3D Scene Viewport with ssr: false
 const Scene3D = dynamic(
   () => import('@/components/viewer3d/Scene3D').then((mod) => mod.Scene3D),
@@ -69,7 +80,7 @@ const EstimatorView = dynamic(
 );
 
 export default function Home() {
-  const { currentMode } = useFloorplanStore();
+  const { currentMode, view2DMode, backgroundImage } = useFloorplanStore();
   const { user, loading, initAuthListener } = useAuthStore();
 
   useEffect(() => {
@@ -119,13 +130,23 @@ export default function Home() {
             <LeftToolbar />
 
             {/* Center Workspace (Interactive 2D Canvas) */}
-            <section className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#090d16]">
-              <div className="flex-1 relative w-full h-full">
-                <FloorplanCanvas />
-                {/* Scale Calibration Dialog */}
-                <CalibrationModal />
-                {/* Live Completeness Checklist & 3D Gate */}
-                <ProjectReadinessCard />
+            <section className="flex-1 flex flex-col h-full relative overflow-hidden bg-slate-100 dark:bg-[#090d16]">
+              {/* Floating 3-Mode & Split Action Switcher */}
+              <ViewModeBar />
+
+              <div className="flex-1 relative w-full h-full flex overflow-hidden">
+                {view2DMode === 'split' && backgroundImage?.url && (
+                  <div className="w-[45%] min-w-[320px] max-w-[650px] h-full relative z-10 shrink-0">
+                    <BlueprintReferencePane key={backgroundImage.url} />
+                  </div>
+                )}
+                <div className="flex-1 relative h-full w-full overflow-hidden">
+                  <FloorplanCanvas />
+                  {/* Scale Calibration Dialog */}
+                  <CalibrationModal />
+                  {/* Live Completeness Checklist & 3D Gate */}
+                  <ProjectReadinessCard />
+                </div>
               </div>
 
               {/* Bottom Status Bar */}

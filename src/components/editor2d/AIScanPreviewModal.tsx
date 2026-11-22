@@ -211,6 +211,20 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
       pixelsPerMeter: scanData.pixelsPerMeter,
       isCalibrated: true,
       currentMode: '2d',
+      view2DMode: 'split',
+      backgroundImage: blueprintUrl
+        ? {
+            url: blueprintUrl,
+            opacity: 0.5,
+            visible: true,
+            width: Math.round(scanData.estimatedWidthMeters * scanData.pixelsPerMeter),
+            height: Math.round(scanData.estimatedHeightMeters * scanData.pixelsPerMeter),
+            widthMeters: scanData.estimatedWidthMeters,
+            heightMeters: scanData.estimatedHeightMeters,
+            x: 0,
+            y: 0,
+          }
+        : state.backgroundImage,
       historyPast: [
         ...state.historyPast,
         {

@@ -61,7 +61,7 @@ export const LeftToolbar: React.FC = () => {
 
     setIsScanning(true);
     try {
-      const compressed = await compressBlueprintImage(backgroundImage.url, 1024, 0.82);
+      const compressed = await compressBlueprintImage(backgroundImage.url, 1600, 0.88);
 
       const response = await fetch('/api/ai/scan-floorplan', {
         method: 'POST',
@@ -114,7 +114,7 @@ export const LeftToolbar: React.FC = () => {
     if (!file) return;
 
     try {
-      const compressed = await compressBlueprintImage(file, 1024, 0.82);
+      const compressed = await compressBlueprintImage(file, 1600, 0.88);
       setBackgroundImage({
         url: compressed.dataUrl,
         opacity: 0.5,

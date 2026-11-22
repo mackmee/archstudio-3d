@@ -11,6 +11,7 @@ import {
   findNearbyEndpoint,
   formatMeters,
 } from '@/lib/geometry';
+import { estimateRoomArea } from '@/lib/wallGeometry';
 import { Point2D, ViewportTransform, Wall } from '@/types/floorplan';
 
 const SNAP_RADIUS_PIXELS = 18;
@@ -27,6 +28,7 @@ export const FloorplanCanvas: React.FC = () => {
     openings,
     rooms,
     backgroundImage,
+    view2DMode,
     activeTool,
     selectedId,
     isOrthoSnapEnabled,
@@ -45,7 +47,7 @@ export const FloorplanCanvas: React.FC = () => {
     setCalibrationPointB,
   } = useFloorplanStore();
 
-  const { theme } = usePreferencesStore();
+  const { theme, language } = usePreferencesStore();
   const isLight = theme === 'light';
 
   // Viewport navigation state (Pan & Zoom)
@@ -108,7 +110,10 @@ export const FloorplanCanvas: React.FC = () => {
     if (walls.length > 0 && containerRef.current && !hasCenteredRef.current) {
       hasCenteredRef.current = true;
       const rect = containerRef.current.getBoundingClientRect();
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
       walls.forEach((w) => {
         minX = Math.min(minX, w.start.x, w.end.x);
         maxX = Math.max(maxX, w.start.x, w.end.x);
@@ -170,37 +175,39 @@ export const FloorplanCanvas: React.FC = () => {
     };
   }, [drawingWallStart, calibrationState.isCalibrating, deleteSelected, setActiveTool, setSelectedId]);
 
-  // Main Render Loop (HTML5 Canvas 2D)
+  // Main Render Loop (HTML5 Canvas 2D) with Pixel-Exact DevicePixelRatio Scaling
   const drawScene = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    // Canvas dimensions in CSS pixels
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
 
     const bgColor = isLight ? '#f8fafc' : '#080c15';
     const minorGridColor = isLight ? '#e2e8f0' : '#151e2e';
     const majorGridColor = isLight ? '#cbd5e1' : '#223049';
-    const axisXColor = isLight ? '#ef444477' : '#ef444455';
-    const axisYColor = isLight ? '#16a34a77' : '#22c55e55';
-    const badgeBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.88)';
+    const axisXColor = isLight ? '#ef444466' : '#ef444444';
+    const axisYColor = isLight ? '#16a34a66' : '#22c55e44';
+    const badgeBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.92)';
     const badgeBorder = isLight ? '#cbd5e1' : '#475569';
     const badgeText = isLight ? '#0f172a' : '#f1f5f9';
-    const roomBadgeBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.85)';
+    const roomBadgeBg = isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.90)';
     const roomBadgeBorder = isLight ? '#cbd5e1' : '#475569';
     const roomBadgeText = isLight ? '#0f172a' : '#ffffff';
 
-    // Reset transform & clear
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Apply DPR scale to ensure 100% pixel-exact alignment with clientX/clientY
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
     // Architectural background
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);
 
-    // Apply viewport transform (Pan & Zoom)
+    // Apply viewport transform (Pan & Zoom) in CSS pixel space
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(viewport.zoom, viewport.zoom);
 
@@ -253,35 +260,46 @@ export const FloorplanCanvas: React.FC = () => {
       }
       ctx.stroke();
 
-      // World Axes (X in red-slate, Y in green-slate)
+      // World Origin Axes (X in red-slate, Y in green-slate)
       ctx.beginPath();
-      ctx.strokeStyle = axisXColor; // X Axis
+      ctx.strokeStyle = axisXColor;
       ctx.lineWidth = 2 / (viewport.zoom * pixelsPerMeter);
       ctx.moveTo(minX * pixelsPerMeter, 0);
       ctx.lineTo(maxX * pixelsPerMeter, 0);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.strokeStyle = axisYColor; // Y Axis
+      ctx.strokeStyle = axisYColor;
       ctx.moveTo(0, minY * pixelsPerMeter);
       ctx.lineTo(0, maxY * pixelsPerMeter);
       ctx.stroke();
     }
 
-    // 2. Draw Blueprint Background Image
-    if (backgroundImage && backgroundImage.visible && bgImageRef.current) {
+    // 2. Draw Blueprint Background Image (Only in 'overlay' mode, anchored 1:1 at 0,0)
+    if (
+      view2DMode === 'overlay' &&
+      backgroundImage &&
+      backgroundImage.visible &&
+      bgImageRef.current
+    ) {
       const img = bgImageRef.current;
       ctx.save();
-      ctx.globalAlpha = backgroundImage.opacity;
-      const imgW = backgroundImage.width || img.width;
-      const imgH = backgroundImage.height || img.height;
-      const imgX = backgroundImage.x * pixelsPerMeter - imgW / 2;
-      const imgY = backgroundImage.y * pixelsPerMeter - imgH / 2;
+      ctx.globalAlpha = backgroundImage.opacity ?? 0.5;
+
+      const imgW =
+        (backgroundImage.widthMeters ? backgroundImage.widthMeters * pixelsPerMeter : backgroundImage.width) ||
+        img.width;
+      const imgH =
+        (backgroundImage.heightMeters ? backgroundImage.heightMeters * pixelsPerMeter : backgroundImage.height) ||
+        img.height;
+      const imgX = (backgroundImage.x ?? 0) * pixelsPerMeter;
+      const imgY = (backgroundImage.y ?? 0) * pixelsPerMeter;
+
       ctx.drawImage(img, imgX, imgY, imgW, imgH);
       ctx.restore();
     }
 
-    // 3. Draw Walls
+    // 3. Draw Walls with Solid Architectural Core & Outer Line
     walls.forEach((wall) => {
       const isSelected = selectedId === wall.id;
       const x1 = wall.start.x * pixelsPerMeter;
@@ -290,28 +308,20 @@ export const FloorplanCanvas: React.FC = () => {
       const y2 = wall.end.y * pixelsPerMeter;
       const wallThicknessPx = wall.thickness * pixelsPerMeter;
 
-      // Draw Wall Body (Thick line with round/miter caps)
+      // Draw Wall Body (Thick line with round caps for clean corner joins)
       ctx.beginPath();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = wallThicknessPx;
-      ctx.strokeStyle = isSelected ? '#1e293b' : '#334155';
+      ctx.strokeStyle = isSelected ? (isLight ? '#0284c7' : '#38bdf8') : (isLight ? '#334155' : '#1e293b');
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
 
       // Wall Outer Border Outline
       ctx.beginPath();
-      ctx.lineWidth = wallThicknessPx + (isSelected ? 4 : 2);
-      ctx.strokeStyle = isSelected ? '#38bdf8' : '#64748b';
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-
-      // Interior fill inside border
-      ctx.beginPath();
-      ctx.lineWidth = Math.max(1, wallThicknessPx - 2);
-      ctx.strokeStyle = isSelected ? '#0f172a' : '#1e293b';
+      ctx.lineWidth = wallThicknessPx + (isSelected ? 3 : 1.5);
+      ctx.strokeStyle = isSelected ? '#38bdf8' : (isLight ? '#64748b' : '#475569');
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
@@ -319,7 +329,7 @@ export const FloorplanCanvas: React.FC = () => {
       // Centerline
       ctx.beginPath();
       ctx.lineWidth = 1;
-      ctx.strokeStyle = isSelected ? '#38bdf888' : '#47556944';
+      ctx.strokeStyle = isSelected ? '#38bdf899' : (isLight ? '#94a3b844' : '#47556944');
       ctx.setLineDash([4, 4]);
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -348,41 +358,80 @@ export const FloorplanCanvas: React.FC = () => {
         ctx.stroke();
       }
 
-      // Live Dimension Label along wall
+      // Professional Architectural Dimension Line with 45° Tick Marks
       const wallLen = distance(wall.start, wall.end);
-      if (wallLen > 0.4) {
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
+      if (wallLen > 0.35) {
         const wallAngle = Math.atan2(y2 - y1, x2 - x1);
+        const normalX = -Math.sin(wallAngle);
+        const normalY = Math.cos(wallAngle);
+        const dimOffset = 0.38 * pixelsPerMeter; // Offset 38cm away from wall
+
+        const dimX1 = x1 + normalX * dimOffset;
+        const dimY1 = y1 + normalY * dimOffset;
+        const dimX2 = x2 + normalX * dimOffset;
+        const dimY2 = y2 + normalY * dimOffset;
+
+        ctx.save();
+        ctx.strokeStyle = isSelected ? '#0284c7' : (isLight ? '#64748b' : '#94a3b8');
+        ctx.lineWidth = 1;
+
+        // Witness extension lines
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(dimX1 + normalX * 3, dimY1 + normalY * 3);
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(dimX2 + normalX * 3, dimY2 + normalY * 3);
+        ctx.stroke();
+
+        // Main dimension line
+        ctx.beginPath();
+        ctx.moveTo(dimX1, dimY1);
+        ctx.lineTo(dimX2, dimY2);
+        ctx.stroke();
+
+        // 45° Architectural Slash Tick Marks at ends
+        const tickSize = Math.max(4, 5 / viewport.zoom);
+        const tickAngle = wallAngle + Math.PI / 4;
+        const tDx = Math.cos(tickAngle) * tickSize;
+        const tDy = Math.sin(tickAngle) * tickSize;
+
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(dimX1 - tDx, dimY1 - tDy);
+        ctx.lineTo(dimX1 + tDx, dimY1 + tDy);
+        ctx.moveTo(dimX2 - tDx, dimY2 - tDy);
+        ctx.lineTo(dimX2 + tDx, dimY2 + tDy);
+        ctx.stroke();
+
+        // Upright Dimension Text Badge
+        const midX = (dimX1 + dimX2) / 2;
+        const midY = (dimY1 + dimY2) / 2;
         let textAngle = wallAngle;
         if (textAngle > Math.PI / 2 || textAngle < -Math.PI / 2) {
           textAngle += Math.PI;
         }
 
-        ctx.save();
         ctx.translate(midX, midY);
         ctx.rotate(textAngle);
 
         const labelText = formatMeters(wallLen);
-        ctx.font = `bold ${Math.max(10, 11 / viewport.zoom)}px ui-sans-serif, system-ui, sans-serif`;
+        const fontSize = Math.max(9, Math.min(12, 11 / viewport.zoom));
+        ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
         const textMetrics = ctx.measureText(labelText);
-        const padX = 6;
-        const padY = 3;
-        const textH = 12;
-
-        // Badge Background
-        ctx.fillStyle = isSelected ? 'rgba(14, 165, 233, 0.95)' : badgeBg;
-        ctx.strokeStyle = isSelected ? '#38bdf8' : badgeBorder;
-        ctx.lineWidth = 1;
+        const padX = 5;
+        const padY = 2;
         const badgeW = textMetrics.width + padX * 2;
-        const badgeH = textH + padY * 2;
+        const badgeH = fontSize + padY * 2;
+
+        ctx.fillStyle = isSelected ? (isLight ? '#0284c7' : '#38bdf8') : badgeBg;
+        ctx.strokeStyle = isSelected ? '#0284c7' : badgeBorder;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(-badgeW / 2, -badgeH / 2 - 1, badgeW, badgeH, 4);
+        ctx.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, 3);
         ctx.fill();
         ctx.stroke();
 
-        // Badge Text
-        ctx.fillStyle = isSelected ? '#030712' : badgeText;
+        ctx.fillStyle = isSelected ? '#ffffff' : badgeText;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, 0, 0);
@@ -391,7 +440,7 @@ export const FloorplanCanvas: React.FC = () => {
       }
     });
 
-    // 4. Draw Openings (Doors & Windows)
+    // 4. Draw Openings (Architectural Doors & Windows)
     openings.forEach((opening) => {
       const hostWall = walls.find((w) => w.id === opening.wallId);
       if (!hostWall) return;
@@ -405,7 +454,6 @@ export const FloorplanCanvas: React.FC = () => {
         hostWall.end.x - hostWall.start.x
       );
 
-      // Center of opening in world meters
       const centerWorld: Point2D = {
         x: hostWall.start.x + (hostWall.end.x - hostWall.start.x) * opening.positionRatio,
         y: hostWall.start.y + (hostWall.end.y - hostWall.start.y) * opening.positionRatio,
@@ -433,7 +481,7 @@ export const FloorplanCanvas: React.FC = () => {
       );
 
       // Frame jamb ends
-      ctx.strokeStyle = isSelected ? '#38bdf8' : '#94a3b8';
+      ctx.strokeStyle = isSelected ? '#38bdf8' : (isLight ? '#475569' : '#94a3b8');
       ctx.lineWidth = 2;
       ctx.beginPath();
       // Left jamb
@@ -445,22 +493,24 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.stroke();
 
       if (opening.type === 'door') {
-        // Door Symbol (Open leaf at 90 degrees + swing arc)
+        // Architectural Door Symbol (90° leaf + swing arc)
         const flipMultiplier = opening.flip ? -1 : 1;
         const hingeX = -openingWidthPx / 2;
         const hingeY = (wallThicknessPx / 2) * flipMultiplier;
 
-        ctx.strokeStyle = isSelected ? '#38bdf8' : '#38bdf8cc';
+        ctx.strokeStyle = isSelected ? '#0284c7' : '#f59e0b';
         ctx.lineWidth = 2;
 
-        // Door leaf (line sticking out perpendicular)
+        // Door leaf line
         ctx.beginPath();
         ctx.moveTo(hingeX, hingeY);
         ctx.lineTo(hingeX, hingeY + openingWidthPx * flipMultiplier);
         ctx.stroke();
 
-        // Swing Arc (quarter circle)
+        // 90-degree swing arc
         ctx.beginPath();
+        ctx.strokeStyle = isSelected ? '#38bdf8' : (isLight ? '#d97706bb' : '#fbbf2499');
+        ctx.lineWidth = 1.2;
         ctx.setLineDash([3, 3]);
         ctx.arc(
           hingeX,
@@ -473,20 +523,32 @@ export const FloorplanCanvas: React.FC = () => {
         ctx.stroke();
         ctx.setLineDash([]);
       } else {
-        // Window Symbol (3 parallel glass/frame lines + sill)
-        ctx.strokeStyle = isSelected ? '#38bdf8' : '#38bdf8ee';
+        // Architectural Window Symbol (Double parallel glass lines + sill)
+        ctx.strokeStyle = isSelected ? '#0284c7' : '#0284c7';
         ctx.lineWidth = 1.5;
 
-        // Top line
+        // Outer line
         ctx.beginPath();
-        ctx.moveTo(-openingWidthPx / 2, -wallThicknessPx / 4);
-        ctx.lineTo(openingWidthPx / 2, -wallThicknessPx / 4);
-        // Center glass line
-        ctx.moveTo(-openingWidthPx / 2, 0);
-        ctx.lineTo(openingWidthPx / 2, 0);
-        // Bottom line
-        ctx.moveTo(-openingWidthPx / 2, wallThicknessPx / 4);
-        ctx.lineTo(openingWidthPx / 2, wallThicknessPx / 4);
+        ctx.moveTo(-openingWidthPx / 2 - 2, -wallThicknessPx / 2);
+        ctx.lineTo(openingWidthPx / 2 + 2, -wallThicknessPx / 2);
+        ctx.stroke();
+
+        // Center glass lines
+        ctx.beginPath();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = isSelected ? '#38bdf8' : (isLight ? '#0284c7' : '#38bdf8');
+        ctx.moveTo(-openingWidthPx / 2, -wallThicknessPx / 6);
+        ctx.lineTo(openingWidthPx / 2, -wallThicknessPx / 6);
+        ctx.moveTo(-openingWidthPx / 2, wallThicknessPx / 6);
+        ctx.lineTo(openingWidthPx / 2, wallThicknessPx / 6);
+        ctx.stroke();
+
+        // Inner line
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.strokeStyle = isSelected ? '#0284c7' : '#0284c7';
+        ctx.moveTo(-openingWidthPx / 2 - 2, wallThicknessPx / 2);
+        ctx.lineTo(openingWidthPx / 2 + 2, wallThicknessPx / 2);
         ctx.stroke();
       }
 
@@ -505,40 +567,48 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.restore();
     });
 
-    // 5. Draw Room Label Markers
+    // 5. Draw Room Label Markers with Calculated Area (m²)
     rooms.forEach((room) => {
       const isSelected = selectedId === room.id;
       const rx = room.x * pixelsPerMeter;
       const ry = room.y * pixelsPerMeter;
 
+      const areaSqm = estimateRoomArea(room, walls);
+      const displayText = `${room.name} · ${areaSqm} m²`;
+
       ctx.save();
       ctx.translate(rx, ry);
 
-      ctx.font = `bold ${Math.max(12, 13 / viewport.zoom)}px ui-sans-serif, system-ui, sans-serif`;
-      const textMetrics = ctx.measureText(room.name);
-      const boxW = Math.max(90, textMetrics.width + 24);
-      const boxH = 34;
+      const fontSize = Math.max(10, Math.min(13, 12 / viewport.zoom));
+      ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+      const textMetrics = ctx.measureText(displayText);
+      const boxW = Math.max(80, textMetrics.width + 24);
+      const boxH = fontSize + 16;
 
       // Badge Card
       ctx.beginPath();
       ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 8);
-      ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.25)' : roomBadgeBg;
+      ctx.fillStyle = isSelected
+        ? isLight
+          ? 'rgba(14, 165, 233, 0.2)'
+          : 'rgba(56, 189, 248, 0.25)'
+        : roomBadgeBg;
       ctx.fill();
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeStyle = isSelected ? '#38bdf8' : roomBadgeBorder;
+      ctx.strokeStyle = isSelected ? '#0284c7' : roomBadgeBorder;
       ctx.stroke();
 
       // Icon Dot
       ctx.beginPath();
-      ctx.arc(-boxW / 2 + 12, 0, 4, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? '#38bdf8' : '#10b981';
+      ctx.arc(-boxW / 2 + 10, 0, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? '#0284c7' : '#10b981';
       ctx.fill();
 
       // Text
-      ctx.fillStyle = isSelected ? '#0284c7' : roomBadgeText;
+      ctx.fillStyle = isSelected ? (isLight ? '#0369a1' : '#38bdf8') : roomBadgeText;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(room.name, 6, 0);
+      ctx.fillText(displayText, 5, 0);
 
       ctx.restore();
     });
@@ -553,8 +623,8 @@ export const FloorplanCanvas: React.FC = () => {
 
       // Rubberband preview line
       ctx.beginPath();
-      ctx.lineWidth = 0.15 * pixelsPerMeter; // standard wall thickness
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+      ctx.lineWidth = 0.15 * pixelsPerMeter;
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
       ctx.lineCap = 'round';
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -620,7 +690,13 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.fillStyle = activeTool === 'door' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(56, 189, 248, 0.3)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect(-openingWidthPx / 2, -wall.thickness * pixelsPerMeter / 2, openingWidthPx, wall.thickness * pixelsPerMeter, 2);
+      ctx.roundRect(
+        -openingWidthPx / 2,
+        (-wall.thickness * pixelsPerMeter) / 2,
+        openingWidthPx,
+        wall.thickness * pixelsPerMeter,
+        2
+      );
       ctx.fill();
       ctx.stroke();
 
@@ -671,25 +747,42 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.stroke();
     }
 
-    // 9. Endpoint Snapping Highlight Ring (Bright Green Pulse)
+    // 9. Endpoint Snapping Highlight Ring (Cyan CAD Snap Indicator)
     if (snappedEndpoint) {
       const snapPx = {
         x: snappedEndpoint.point.x * pixelsPerMeter,
         y: snappedEndpoint.point.y * pixelsPerMeter,
       };
       ctx.beginPath();
-      ctx.arc(snapPx.x, snapPx.y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+      ctx.arc(snapPx.x, snapPx.y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.25)';
       ctx.fill();
-      ctx.strokeStyle = '#22c55e';
+      ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
       // Inner snap dot
       ctx.beginPath();
-      ctx.arc(snapPx.x, snapPx.y, 3, 0, Math.PI * 2);
+      ctx.arc(snapPx.x, snapPx.y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
+
+      // Snap Hint Pill
+      ctx.save();
+      const snapHintText = language === 'uz' ? 'Nuqta' : 'Точка';
+      ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
+      const snapMetrics = ctx.measureText(snapHintText);
+      const pillW = snapMetrics.width + 10;
+      const pillH = 16;
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(snapPx.x + 10, snapPx.y - 8, pillW, pillH, 4);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(snapHintText, snapPx.x + 10 + pillW / 2, snapPx.y);
+      ctx.restore();
     }
   }, [
     viewport,
@@ -698,6 +791,7 @@ export const FloorplanCanvas: React.FC = () => {
     openings,
     rooms,
     backgroundImage,
+    view2DMode,
     activeTool,
     selectedId,
     showGrid,
@@ -707,6 +801,7 @@ export const FloorplanCanvas: React.FC = () => {
     hoveredWallForOpening,
     calibrationState,
     isLight,
+    language,
   ]);
 
   // Handle Resize and Animation Frame Rendering
@@ -718,15 +813,11 @@ export const FloorplanCanvas: React.FC = () => {
     const handleResize = () => {
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-      }
       drawScene();
     };
 
@@ -748,7 +839,7 @@ export const FloorplanCanvas: React.FC = () => {
     return () => cancelAnimationFrame(animId);
   }, [drawScene]);
 
-  // Mouse Move Event Handler
+  // Mouse Move Event Handler (100% 1:1 with Screen CSS Pixels)
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -774,19 +865,22 @@ export const FloorplanCanvas: React.FC = () => {
     // 2. Dragging Existing Elements (Wall endpoints, walls, openings, rooms)
     if (dragState.type) {
       if (dragState.type === 'wall-start' && dragState.id) {
-        // Snap endpoint while dragging
         const snapMeters = SNAP_RADIUS_PIXELS / (viewport.zoom * pixelsPerMeter);
         const snap = findNearbyEndpoint(mouseWorld, walls, snapMeters, dragState.id);
-        const finalPt = snap ? snap.point : (isOrthoSnapEnabled && dragState.initialWall
+        const finalPt = snap
+          ? snap.point
+          : isOrthoSnapEnabled && dragState.initialWall
           ? snapToAngle(dragState.initialWall.end, mouseWorld)
-          : mouseWorld);
+          : mouseWorld;
         updateWall(dragState.id, { start: finalPt });
       } else if (dragState.type === 'wall-end' && dragState.id) {
         const snapMeters = SNAP_RADIUS_PIXELS / (viewport.zoom * pixelsPerMeter);
         const snap = findNearbyEndpoint(mouseWorld, walls, snapMeters, dragState.id);
-        const finalPt = snap ? snap.point : (isOrthoSnapEnabled && dragState.initialWall
+        const finalPt = snap
+          ? snap.point
+          : isOrthoSnapEnabled && dragState.initialWall
           ? snapToAngle(dragState.initialWall.start, mouseWorld)
-          : mouseWorld);
+          : mouseWorld;
         updateWall(dragState.id, { end: finalPt });
       } else if (dragState.type === 'wall-body' && dragState.id && dragState.initialWall) {
         const dx = mouseWorld.x - dragState.startPoint.x;
@@ -849,7 +943,15 @@ export const FloorplanCanvas: React.FC = () => {
           }
         }
       }
-      setHoveredWallForOpening(closestWall ? { wall: closestWall.wall, ratio: closestWall.ratio, snappedPoint: closestWall.snappedPoint } : null);
+      setHoveredWallForOpening(
+        closestWall
+          ? {
+              wall: closestWall.wall,
+              ratio: closestWall.ratio,
+              snappedPoint: closestWall.snappedPoint,
+            }
+          : null
+      );
     } else {
       if (hoveredWallForOpening) setHoveredWallForOpening(null);
     }
@@ -863,7 +965,7 @@ export const FloorplanCanvas: React.FC = () => {
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
-    // Check Middle Click or Space Key or Pan Tool
+    // Middle Click or Space Key or Pan Tool
     if (e.button === 1 || isSpacePressed || activeTool === 'pan') {
       setIsPanning(true);
       setPanStart({ x: screenX, y: screenY });
@@ -934,7 +1036,7 @@ export const FloorplanCanvas: React.FC = () => {
     // --- TOOL: ROOM LABEL ---
     if (activeTool === 'room') {
       addRoom({
-        name: 'New Room',
+        name: language === 'uz' ? 'Yangi Xona' : 'Новая комната',
         x: Math.round(mouseWorld.x * 10) / 10,
         y: Math.round(mouseWorld.y * 10) / 10,
       });
@@ -1078,7 +1180,8 @@ export const FloorplanCanvas: React.FC = () => {
   const getCursorStyle = () => {
     if (isPanning || isSpacePressed) return 'cursor-grab active:cursor-grabbing';
     if (dragState.type === 'wall-start' || dragState.type === 'wall-end') return 'cursor-crosshair';
-    if (dragState.type === 'wall-body' || dragState.type === 'room' || dragState.type === 'opening') return 'cursor-move';
+    if (dragState.type === 'wall-body' || dragState.type === 'room' || dragState.type === 'opening')
+      return 'cursor-move';
     switch (activeTool) {
       case 'pan':
         return 'cursor-grab active:cursor-grabbing';

@@ -10,6 +10,7 @@ import {
   Room,
   Selected3DTarget,
   ToolType,
+  View2DMode,
   View3DSettings,
   Wall,
   ProjectMetadata,
@@ -17,6 +18,7 @@ import {
   MarketPresetType,
 } from '@/types/floorplan';
 import { distance } from '@/lib/geometry';
+import { splitWallsAtIntersections } from '@/lib/wallGeometry';
 import { getUzbekistanMarketPreset } from '@/lib/estimator';
 import {
   DEFAULT_FLOOR_MATERIAL_ID,
@@ -46,12 +48,18 @@ interface ProjectState {
   laborRatePerSqm: number;
   includeDelivery: boolean;
   deliveryFee: number;
+  view2DMode?: View2DMode;
 }
 
 interface FloorplanStore extends ProjectState {
   // App Mode (Onboarding / 2D / 3D / Estimator)
   currentMode: EditorMode;
   setCurrentMode: (mode: EditorMode) => void;
+
+  // 2D View Mode (Split / Overlay / Clean)
+  view2DMode: View2DMode;
+  setView2DMode: (mode: View2DMode) => void;
+  splitAllWallsAtIntersections: () => { wallsSplit: number; junctionsSnapped: number };
 
   // Project Metadata Actions
   setProjectMetadata: (partial: Partial<ProjectMetadata>) => void;
@@ -184,6 +192,7 @@ const initialProjectState: ProjectState = {
   laborRatePerSqm: 25,
   includeDelivery: true,
   deliveryFee: 25,
+  view2DMode: 'clean',
 };
 
 export const useFloorplanStore = create<FloorplanStore>((set, get) => {
@@ -209,6 +218,7 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       laborRatePerSqm,
       includeDelivery,
       deliveryFee,
+      view2DMode,
       historyPast,
     } = get();
 
@@ -233,6 +243,7 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       laborRatePerSqm,
       includeDelivery,
       deliveryFee,
+      view2DMode,
     };
 
     set({
@@ -245,6 +256,20 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
     ...initialProjectState,
     currentMode: 'onboarding',
     setCurrentMode: (mode) => set({ currentMode: mode }),
+
+    view2DMode: 'clean',
+    setView2DMode: (mode) => set({ view2DMode: mode }),
+
+    splitAllWallsAtIntersections: () => {
+      const { walls, openings } = get();
+      pushHistory();
+      const res = splitWallsAtIntersections(walls, openings, 0.15);
+      set({
+        walls: res.walls,
+        openings: res.openings,
+      });
+      return { wallsSplit: res.splitCount, junctionsSnapped: res.snappedCount };
+    },
 
     setProjectMetadata: (partial) =>
       set((s) => ({

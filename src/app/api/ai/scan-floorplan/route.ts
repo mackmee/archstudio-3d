@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dns from 'node:dns';
 import https from 'node:https';
 import { URL } from 'node:url';
+import { splitWallsAtIntersections } from '@/lib/wallGeometry';
 
 // Prioritize IPv4 resolution to prevent macOS IPv6 fetch / undici network drops
 try {
@@ -128,11 +129,13 @@ export async function POST(req: NextRequest) {
     // Strip data URL scheme prefix if present
     const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
 
-    const systemPrompt = `You are a world-class architectural AI engineer specialized in parsing 2D floor plans and blueprints into structured CAD vector entities.
-Your job is to accurately detect:
-1. All structural walls (both exterior perimeter and interior partition walls).
-2. All architectural openings: doors ('door') and windows ('window').
-3. Room labels with their approximate 2D center positions and names in ${
+    const systemPrompt = `You are a world-class architectural AI engineer specialized in parsing 2D floor plans, blueprints, and architectural layouts into precise CAD vector entities.
+Your job is to thoroughly detect:
+1. All structural walls: both perimeter exterior walls (thickness ~0.20-0.25m) and interior partition walls (thickness ~0.12-0.15m). Interior partition walls must connect cleanly to outer walls or other partition walls (forming T-junctions or L-corners without floating gaps).
+2. All architectural openings:
+   - Doors ('door'): You MUST actively scan every room boundary (entry, bedrooms, bathrooms, kitchen, living room) for door openings and swing arcs. In an apartment, every interior room must have an access door! Typically width 0.8m - 1.0m, height 2.1m.
+   - Windows ('window'): Scan exterior walls for parallel double lines or window glass markings. Typically width 1.2m - 1.8m, height 1.4m, sillHeight 0.9m.
+3. Room labels with their approximate 2D center positions and standard names in ${
       language === 'uz' ? 'Uzbek Latin' : 'Russian'
     }.
 4. The estimated bounding dimensions of the entire apartment in meters (e.g. width: 8.5m to 14m, height: 6m to 12m, based on the ${
@@ -387,6 +390,13 @@ Return ONLY valid JSON matching this schema:
         };
       });
 
+    // Auto T-Junction Splitting Algorithm:
+    // Automatically splits walls where interior partition walls meet exterior or other walls,
+    // snapping touching endpoints and remapping door/window openings
+    const splitResult = splitWallsAtIntersections(snappedWalls, convertedOpenings, 0.15);
+    const finalWalls = splitResult.walls;
+    const finalOpenings = splitResult.openings;
+
     // Convert room labels
     const convertedRooms = (parsed.rooms || []).map((r, idx) => {
       return {
@@ -404,8 +414,8 @@ Return ONLY valid JSON matching this schema:
         estimatedWidthMeters: estW,
         estimatedHeightMeters: estH,
         pixelsPerMeter,
-        walls: snappedWalls,
-        openings: convertedOpenings,
+        walls: finalWalls,
+        openings: finalOpenings,
         rooms: convertedRooms,
       },
     });

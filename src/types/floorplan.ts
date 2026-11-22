@@ -51,10 +51,14 @@ export interface BackgroundImage {
   visible: boolean;
   width: number; // in pixels
   height: number; // in pixels
-  x: number; // center offset in meters
-  y: number; // center offset in meters
+  x: number; // top-left offset X in meters (default 0)
+  y: number; // top-left offset Y in meters (default 0)
   rotation?: number; // degrees
+  widthMeters?: number; // physical width in meters
+  heightMeters?: number; // physical height in meters
 }
+
+export type View2DMode = 'split' | 'overlay' | 'clean';
 
 export type ToolType =
   | 'select'

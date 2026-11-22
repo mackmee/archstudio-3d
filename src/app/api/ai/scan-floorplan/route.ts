@@ -207,12 +207,12 @@ Return ONLY valid JSON matching this schema:
 }`;
 
     // Pass API key via x-goog-api-key header to generativelanguage.googleapis.com
-    // Works cleanly with Google AI Studio AQ.* and AIza* keys with automatic model fallback
+    // Candidate models in fallback order: 2.5-flash -> 2.0-flash -> 2.5-flash-lite -> 3-flash-preview
     const candidateEndpoints: string[] = [
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-      'https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
     ];
 
     const payload = {
@@ -242,15 +242,52 @@ Return ONLY valid JSON matching this schema:
 
     for (const endpoint of candidateEndpoints) {
       try {
-        const res = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+        let res = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+
+        // Immediate fallback on 404 (model not found)
         if (res.statusCode === 404) {
           lastErrDetails = res.data;
           lastStatusCode = res.statusCode;
-          console.warn(`Endpoint ${endpoint.slice(0, 60)} returned 404, trying next candidate...`);
+          console.warn(`Endpoint ${endpoint.slice(0, 75)} returned 404, trying next candidate...`);
           continue;
         }
+
+        // On 503 (high demand / overloaded) or 429 (rate limit), wait 1200ms, retry once, then fallback
+        if (res.statusCode === 503 || res.statusCode === 429) {
+          console.warn(
+            `Endpoint ${endpoint.slice(0, 75)} returned ${res.statusCode}. Waiting 1200ms before retry...`
+          );
+          await new Promise((r) => setTimeout(r, 1200));
+
+          try {
+            const retryRes = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+            if (retryRes.statusCode < 400) {
+              httpRes = retryRes;
+              break;
+            } else if (
+              retryRes.statusCode === 503 ||
+              retryRes.statusCode === 429 ||
+              retryRes.statusCode === 404
+            ) {
+              lastErrDetails = retryRes.data;
+              lastStatusCode = retryRes.statusCode;
+              console.warn(
+                `Endpoint ${endpoint.slice(0, 75)} retry returned ${retryRes.statusCode}, falling back to next candidate...`
+              );
+              continue;
+            } else {
+              res = retryRes;
+            }
+          } catch (retryErr: unknown) {
+            console.warn(`Endpoint retry network error:`, retryErr);
+            continue;
+          }
+        }
+
         httpRes = res;
-        break;
+        if (res.statusCode < 400) {
+          break;
+        }
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         lastErrorCode = code;

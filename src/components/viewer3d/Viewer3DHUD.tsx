@@ -20,7 +20,9 @@ import {
   Compass,
   Camera,
   Scan,
+  Armchair,
 } from 'lucide-react';
+import { autoFurnishFloorplan } from '@/lib/autoFurnish';
 
 interface Viewer3DHUDProps {
   onResetCamera: () => void;
@@ -29,6 +31,8 @@ interface Viewer3DHUDProps {
 export const Viewer3DHUD: React.FC<Viewer3DHUDProps> = ({ onResetCamera }) => {
   const {
     rooms,
+    walls,
+    furniture,
     view3dSettings,
     setCameraMode3D,
     setLightingPreset,
@@ -44,6 +48,14 @@ export const Viewer3DHUD: React.FC<Viewer3DHUDProps> = ({ onResetCamera }) => {
   const { language } = usePreferencesStore();
   const isOrbit = view3dSettings.cameraMode === 'orbit';
   const lightingPreset = view3dSettings.lightingPreset || 'day';
+
+  const handleAutoFurnish = () => {
+    if (rooms.length === 0) return;
+    const res = autoFurnishFloorplan(rooms, walls, furniture);
+    if (res.addedCount > 0) {
+      useFloorplanStore.setState({ furniture: res.newFurniture });
+    }
+  };
 
   return (
     <div className="absolute inset-x-0 bottom-6 pointer-events-none z-30 flex flex-col items-center gap-2.5 px-4 select-none">
@@ -243,6 +255,18 @@ export const Viewer3DHUD: React.FC<Viewer3DHUDProps> = ({ onResetCamera }) => {
           <Tag className="w-3.5 h-3.5 text-emerald-500" />
           <span className="hidden lg:inline">{getTranslation(language, 'roomLabelsToggle')}</span>
         </button>
+
+        {/* Auto-Furnish Rooms Button */}
+        {rooms.length > 0 && (
+          <button
+            onClick={handleAutoFurnish}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 shadow-xs transition cursor-pointer"
+            title={getTranslation(language, 'autoFurnishTooltip')}
+          >
+            <Armchair className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="hidden md:inline">{getTranslation(language, 'autoFurnishBtn')}</span>
+          </button>
+        )}
 
         <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
 

@@ -469,3 +469,166 @@ export function getRoomBoundingWalls(
     inwardSide,
   }));
 }
+
+/**
+ * CAD "Auto-Rectify" Post-Processor:
+ * 1. Orthogonal Snap: Snap walls within 6° of 0°, 90°, 180°, 270° to exact orthogonal axes.
+ * 2. Collinear Axis Clustering: Cluster nearby horizontal wall Y-coords and vertical wall X-coords
+ *    within 0.22m tolerance to align continuous structural wall lines (eliminating jagged step offsets).
+ * 3. Endpoint & T-Junction Snapping: Snap dangling endpoints within 0.35m to nearby vertices/segments,
+ *    then split walls at intersections.
+ * 4. Opening Clamping: Clamp doors and windows to standard architectural dimensions.
+ */
+export function rectifyAiFloorplan(
+  initialWalls: Wall[],
+  initialOpenings: Opening[]
+): { walls: Wall[]; openings: Opening[] } {
+  // Deep clone to avoid mutating input references
+  let walls: Wall[] = initialWalls.map((w) => ({
+    ...w,
+    start: { ...w.start },
+    end: { ...w.end },
+  }));
+  let openings: Opening[] = initialOpenings.map((o) => ({ ...o }));
+
+  // 1. Orthogonal Snap (6° tolerance = sin(6°) ≈ 0.1045)
+  const sin6Deg = Math.sin((6 * Math.PI) / 180);
+  walls.forEach((w) => {
+    const dx = w.end.x - w.start.x;
+    const dy = w.end.y - w.start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) return;
+
+    if (Math.abs(dy / len) < sin6Deg) {
+      // Near horizontal -> snap Y
+      const avgY = Number(((w.start.y + w.end.y) / 2).toFixed(3));
+      w.start.y = avgY;
+      w.end.y = avgY;
+    } else if (Math.abs(dx / len) < sin6Deg) {
+      // Near vertical -> snap X
+      const avgX = Number(((w.start.x + w.end.x) / 2).toFixed(3));
+      w.start.x = avgX;
+      w.end.x = avgX;
+    }
+  });
+
+  // 2. Collinear Axis Clustering (0.22m tolerance)
+  // Cluster horizontal wall Y-coordinates
+  const horizWalls = walls.filter((w) => Math.abs(w.start.y - w.end.y) < 0.005);
+  const yClusters: { y: number; walls: Wall[] }[] = [];
+  horizWalls.forEach((w) => {
+    const wallY = (w.start.y + w.end.y) / 2;
+    const matched = yClusters.find((c) => Math.abs(c.y - wallY) < 0.22);
+    if (matched) {
+      matched.walls.push(w);
+      matched.y = matched.walls.reduce((sum, item) => sum + (item.start.y + item.end.y) / 2, 0) / matched.walls.length;
+    } else {
+      yClusters.push({ y: wallY, walls: [w] });
+    }
+  });
+  yClusters.forEach((cluster) => {
+    if (cluster.walls.length > 1) {
+      const targetY = Number(cluster.y.toFixed(3));
+      cluster.walls.forEach((w) => {
+        w.start.y = targetY;
+        w.end.y = targetY;
+      });
+    }
+  });
+
+  // Cluster vertical wall X-coordinates
+  const vertWalls = walls.filter((w) => Math.abs(w.start.x - w.end.x) < 0.005);
+  const xClusters: { x: number; walls: Wall[] }[] = [];
+  vertWalls.forEach((w) => {
+    const wallX = (w.start.x + w.end.x) / 2;
+    const matched = xClusters.find((c) => Math.abs(c.x - wallX) < 0.22);
+    if (matched) {
+      matched.walls.push(w);
+      matched.x = matched.walls.reduce((sum, item) => sum + (item.start.x + item.end.x) / 2, 0) / matched.walls.length;
+    } else {
+      xClusters.push({ x: wallX, walls: [w] });
+    }
+  });
+  xClusters.forEach((cluster) => {
+    if (cluster.walls.length > 1) {
+      const targetX = Number(cluster.x.toFixed(3));
+      cluster.walls.forEach((w) => {
+        w.start.x = targetX;
+        w.end.x = targetX;
+      });
+    }
+  });
+
+  // 3. Endpoint Snapping & T-Junction projection (0.35m tolerance)
+  const SNAP_DIST = 0.35;
+  // First pass: snap close endpoints together
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const ptsA = [walls[i].start, walls[i].end];
+      const ptsB = [walls[j].start, walls[j].end];
+      for (const pA of ptsA) {
+        for (const pB of ptsB) {
+          const d = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+          if (d > 0.001 && d < SNAP_DIST) {
+            const midX = Number(((pA.x + pB.x) / 2).toFixed(3));
+            const midY = Number(((pA.y + pB.y) / 2).toFixed(3));
+            pA.x = midX;
+            pA.y = midY;
+            pB.x = midX;
+            pB.y = midY;
+          }
+        }
+      }
+    }
+  }
+
+  // Second pass: snap dangling endpoints onto nearby wall segments
+  walls.forEach((w, i) => {
+    [w.start, w.end].forEach((pt) => {
+      let closestSegment: { point: Point2D; dist: number } | null = null;
+      walls.forEach((other, j) => {
+        if (i === j) return;
+        const proj = projectPointOntoSegment(pt, other.start, other.end);
+        if (proj.distance > 0.005 && proj.distance < SNAP_DIST && proj.ratio > 0.05 && proj.ratio < 0.95) {
+          if (!closestSegment || proj.distance < closestSegment.dist) {
+            closestSegment = { point: proj.point, dist: proj.distance };
+          }
+        }
+      });
+      if (closestSegment) {
+        pt.x = Number((closestSegment as { point: Point2D; dist: number }).point.x.toFixed(3));
+        pt.y = Number((closestSegment as { point: Point2D; dist: number }).point.y.toFixed(3));
+      }
+    });
+  });
+
+  // Split walls at all intersections and remap openings
+  const splitRes = splitWallsAtIntersections(walls, openings, 0.20);
+  walls = splitRes.walls;
+  openings = splitRes.openings;
+
+  // 4. Opening Clamping (Ensure realistic architectural dimensions)
+  openings.forEach((op) => {
+    const host = walls.find((w) => w.id === op.wallId);
+    if (!host) return;
+    const wLen = distance(host.start, host.end);
+    if (wLen < 0.2) return;
+
+    if (op.type === 'door') {
+      if (op.width < 0.75) op.width = 0.8;
+      else if (op.width > 1.05 && op.width < 1.25) op.width = 0.9;
+      else if (op.width >= 1.25) op.width = Math.min(1.6, op.width);
+    } else {
+      op.width = Math.max(0.8, Math.min(2.4, op.width));
+    }
+
+    const halfW = op.width / 2;
+    const minRatio = (halfW + 0.05) / wLen;
+    const maxRatio = 1 - (halfW + 0.05) / wLen;
+    if (minRatio < maxRatio) {
+      op.positionRatio = Number(Math.max(minRatio, Math.min(maxRatio, op.positionRatio)).toFixed(3));
+    }
+  });
+
+  return { walls, openings };
+}

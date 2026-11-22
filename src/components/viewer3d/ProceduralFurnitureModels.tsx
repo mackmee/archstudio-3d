@@ -30,6 +30,12 @@ export const ProceduralFurnitureModel: React.FC<ModelProps> = ({ modelType, colo
       return <DiningSet color={primaryColor} />;
     case 'kitchen_island':
       return <KitchenIsland color={primaryColor} />;
+    case 'desk':
+      return <StudyDesk color={primaryColor} />;
+    case 'bathtub':
+      return <Bathtub color={primaryColor} />;
+    case 'toilet':
+      return <Toilet color={primaryColor} />;
     case 'curtains_pleated':
       return <CurtainsPleated color={primaryColor} />;
     case 'floor_lamp':
@@ -460,5 +466,119 @@ const PottedPlant: React.FC<{ color: string }> = ({ color }) => (
         <meshStandardMaterial color={color} roughness={0.4} />
       </mesh>
     ))}
+  </group>
+);
+
+// 13. Study Desk & Ergonomic Chair
+const StudyDesk: React.FC<{ color: string }> = ({ color }) => (
+  <group>
+    {/* Desk Top */}
+    <mesh position={[0, 0.73, 0]} castShadow receiveShadow>
+      <boxGeometry args={[1.4, 0.04, 0.7]} />
+      <meshStandardMaterial color={color} roughness={0.5} />
+    </mesh>
+
+    {/* Steel Legs */}
+    {[
+      [-0.65, 0.35, -0.3],
+      [-0.65, 0.35, 0.3],
+      [0.65, 0.35, -0.3],
+      [0.65, 0.35, 0.3],
+    ].map(([lx, ly, lz], i) => (
+      <mesh key={i} position={[lx, ly, lz]} castShadow>
+        <boxGeometry args={[0.04, 0.7, 0.04]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.7} roughness={0.3} />
+      </mesh>
+    ))}
+
+    {/* Under-desk Drawer Unit on Right */}
+    <mesh position={[0.45, 0.42, 0]} castShadow receiveShadow>
+      <boxGeometry args={[0.36, 0.58, 0.6]} />
+      <meshStandardMaterial color="#334155" roughness={0.6} />
+    </mesh>
+
+    {/* Laptop on Desk */}
+    <mesh position={[-0.15, 0.76, 0]} castShadow>
+      <boxGeometry args={[0.32, 0.015, 0.24]} />
+      <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.2} />
+    </mesh>
+    <mesh position={[-0.15, 0.86, -0.11]} rotation={[-0.3, 0, 0]} castShadow>
+      <boxGeometry args={[0.32, 0.2, 0.01]} />
+      <meshStandardMaterial color="#0f172a" roughness={0.3} />
+    </mesh>
+
+    {/* Ergonomic Office Chair */}
+    <group position={[-0.15, 0, 0.6]}>
+      <mesh position={[0, 0.45, 0]} castShadow>
+        <boxGeometry args={[0.48, 0.08, 0.46]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, 0.75, 0.2]} castShadow>
+        <boxGeometry args={[0.44, 0.52, 0.06]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, 0.22, 0]}>
+        <cylinderGeometry args={[0.03, 0.03, 0.42]} />
+        <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+      </mesh>
+    </group>
+  </group>
+);
+
+// 14. Freestanding Modern Oval Bathtub
+const Bathtub: React.FC<{ color: string }> = ({ color }) => (
+  <group>
+    {/* Outer Tub Shell */}
+    <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
+      <boxGeometry args={[1.7, 0.6, 0.8]} />
+      <meshStandardMaterial color={color || '#f8fafc'} roughness={0.2} metalness={0.05} />
+    </mesh>
+
+    {/* Inner Water Volume */}
+    <mesh position={[0, 0.42, 0]}>
+      <boxGeometry args={[1.5, 0.02, 0.64]} />
+      <meshStandardMaterial color="#38bdf8" roughness={0.1} transparent opacity={0.65} />
+    </mesh>
+
+    {/* Floor-mounted Chrome Faucet Mixer */}
+    <mesh position={[0.78, 0.55, 0]} castShadow>
+      <cylinderGeometry args={[0.02, 0.02, 0.75]} />
+      <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.1} />
+    </mesh>
+    <mesh position={[0.72, 0.9, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+      <cylinderGeometry args={[0.018, 0.018, 0.16]} />
+      <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.1} />
+    </mesh>
+  </group>
+);
+
+// 15. Wall-Hung Modern Toilet
+const Toilet: React.FC<{ color: string }> = ({ color }) => (
+  <group>
+    {/* Wall-Hung Bowl */}
+    <mesh position={[0, 0.36, 0.15]} castShadow receiveShadow>
+      <boxGeometry args={[0.38, 0.34, 0.54]} />
+      <meshStandardMaterial color={color || '#ffffff'} roughness={0.15} metalness={0.05} />
+    </mesh>
+
+    {/* Seat & Lid */}
+    <mesh position={[0, 0.54, 0.15]} castShadow>
+      <boxGeometry args={[0.36, 0.03, 0.5]} />
+      <meshStandardMaterial color="#f1f5f9" roughness={0.2} />
+    </mesh>
+
+    {/* In-Wall Flush Plate */}
+    <mesh position={[0, 0.82, -0.1]} castShadow>
+      <boxGeometry args={[0.22, 0.14, 0.02]} />
+      <meshStandardMaterial color="#cbd5e1" metalness={0.7} roughness={0.2} />
+    </mesh>
+    <mesh position={[-0.04, 0.82, -0.09]}>
+      <circleGeometry args={[0.03, 16]} />
+      <meshStandardMaterial color="#64748b" metalness={0.8} />
+    </mesh>
+    <mesh position={[0.04, 0.82, -0.09]}>
+      <circleGeometry args={[0.02, 16]} />
+      <meshStandardMaterial color="#64748b" metalness={0.8} />
+    </mesh>
   </group>
 );

@@ -83,6 +83,10 @@ export const translations = {
     blueprintOpacity: 'Chizma shaffofligi',
     splitWallsBtn: 'Devorlarni ajratish',
     splitWallsTooltip: 'T-tutashuvlarda devorlarni avtomatik kesish va eshik/derazalarni saqlash',
+    autoFurnishBtn: 'Mebellarni joylash',
+    autoFurnishTooltip: 'Har bir xonaga mos mebellarni avtomatik joylashtirish',
+    rectifyWallsBtn: 'Devorlarni to‘g‘rilash',
+    rectifyWallsTooltip: 'Devorlarni 90° burchak va umumiy o‘qlarga to‘g‘rilash',
     blueprintReferenceTitle: 'Asl Chizma (Mo‘ljal)',
     blueprintPaneHint: 'Sichqoncha bilan ko‘chiring · G‘ildirakcha bilan masshtablang',
 
@@ -409,6 +413,10 @@ export const translations = {
     blueprintOpacity: 'Прозрачность чертежа',
     splitWallsBtn: 'Разделить стены',
     splitWallsTooltip: 'Автоматическое разделение стен в T-образных стыках с сохранением проемов',
+    autoFurnishBtn: 'Расставить мебель',
+    autoFurnishTooltip: 'Автоматически расставить стартовую мебель по комнатам',
+    rectifyWallsBtn: 'Выравнивание стен',
+    rectifyWallsTooltip: 'Выровнять стены под 90° и общие оси',
     blueprintReferenceTitle: 'Исходный Чертеж',
     blueprintPaneHint: 'Перемещение мышью · Масштабирование колесиком',
 

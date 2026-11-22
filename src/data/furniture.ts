@@ -1,4 +1,4 @@
-export type FurnitureCategory = 'living' | 'bedroom' | 'kitchen' | 'curtains' | 'decor';
+export type FurnitureCategory = 'living' | 'bedroom' | 'kitchen' | 'bathroom' | 'curtains' | 'decor';
 
 export type ProceduralModelType =
   | 'sofa_3seater'
@@ -10,6 +10,9 @@ export type ProceduralModelType =
   | 'wardrobe'
   | 'dining_set'
   | 'kitchen_island'
+  | 'desk'
+  | 'bathtub'
+  | 'toilet'
   | 'curtains_pleated'
   | 'floor_lamp'
   | 'potted_plant'
@@ -108,6 +111,16 @@ export const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     modelType: 'wardrobe',
     description: 'Full-height Scandinavian wardrobe with flush soft-close doors and matte black vertical handles.',
   },
+  {
+    id: 'furn_desk',
+    name: 'Modern Study Desk & Chair',
+    category: 'bedroom',
+    dimensions: { width: 1.4, height: 0.75, depth: 0.7 },
+    price: 450,
+    defaultColor: '#334155',
+    modelType: 'desk',
+    description: 'Contemporary writing and computer desk with oak surface, drawer unit, and ergonomic chair.',
+  },
 
   // ==========================================
   // KITCHEN & DINING (2 Items)
@@ -131,6 +144,30 @@ export const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     defaultColor: '#0f172a',
     modelType: 'kitchen_island',
     description: 'Freestanding kitchen island with white quartz waterfall countertop and base drawers.',
+  },
+
+  // ==========================================
+  // BATHROOM & SANITARY (2 Items)
+  // ==========================================
+  {
+    id: 'furn_bathtub',
+    name: 'Freestanding Oval Bathtub',
+    category: 'bathroom',
+    dimensions: { width: 1.7, height: 0.6, depth: 0.8 },
+    price: 890,
+    defaultColor: '#f8fafc',
+    modelType: 'bathtub',
+    description: 'Seamless white acrylic freestanding soaking tub with chrome floor-mounted mixer.',
+  },
+  {
+    id: 'furn_toilet',
+    name: 'Wall-Hung Modern Toilet',
+    category: 'bathroom',
+    dimensions: { width: 0.42, height: 0.5, depth: 0.6 },
+    price: 320,
+    defaultColor: '#ffffff',
+    modelType: 'toilet',
+    description: 'Compact rimless wall-mounted toilet bowl with concealed in-wall cistern push plate.',
   },
 
   // ==========================================

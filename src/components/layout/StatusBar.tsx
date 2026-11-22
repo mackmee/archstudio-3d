@@ -64,7 +64,7 @@ export const StatusBar: React.FC = () => {
 
         <div className="flex items-center gap-1.5">
           <Ruler className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-mono text-amber-300 font-semibold">{pixelsPerMeter} px/m</span>
+          <span className="font-mono text-amber-300 font-semibold">{pixelsPerMeter.toFixed(1)} px/m</span>
           <span className="text-slate-500">| H: {ceilingHeight}m</span>
         </div>
       </div>

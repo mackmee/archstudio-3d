@@ -4,7 +4,7 @@ import React, { useRef, useEffect } from 'react';
 import { useFloorplanStore } from '@/store/useFloorplanStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
-import { Wall, Opening, Room } from '@/types/floorplan';
+import { Wall, Opening, Room, PlacedFurniture } from '@/types/floorplan';
 import {
   Sparkles,
   X,
@@ -13,15 +13,23 @@ import {
   DoorOpen,
   Tag,
   Maximize2,
+  Armchair,
 } from 'lucide-react';
 
 export interface AIScanResultData {
   walls: Wall[];
   openings: Opening[];
   rooms: Room[];
+  furniture?: PlacedFurniture[];
   estimatedWidthMeters: number;
   estimatedHeightMeters: number;
   pixelsPerMeter: number;
+  alignment?: {
+    imageX: number;
+    imageY: number;
+    imageWidthMeters: number;
+    imageHeightMeters: number;
+  };
 }
 
 interface AIScanPreviewModalProps {
@@ -80,10 +88,22 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
 
       ctx.clearRect(0, 0, targetW, targetH);
 
+      // Scale factors to map real-world meters to preview canvas pixels
+      const scaleX = targetW / estimatedWidthMeters;
+      const scaleY = targetH / estimatedHeightMeters;
+
       // 1. Draw Blueprint Background if available
       if (img.complete && img.naturalWidth > 0) {
         ctx.globalAlpha = 0.55;
-        ctx.drawImage(img, 0, 0, targetW, targetH);
+        if (scanData.alignment) {
+          const imgX = scanData.alignment.imageX * scaleX;
+          const imgY = scanData.alignment.imageY * scaleY;
+          const imgW = scanData.alignment.imageWidthMeters * scaleX;
+          const imgH = scanData.alignment.imageHeightMeters * scaleY;
+          ctx.drawImage(img, imgX, imgY, imgW, imgH);
+        } else {
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+        }
         ctx.globalAlpha = 1.0;
       } else {
         // Subtle blueprint grid placeholder
@@ -105,10 +125,6 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
           ctx.stroke();
         }
       }
-
-      // Scale factors to map real-world meters to preview canvas pixels
-      const scaleX = targetW / estimatedWidthMeters;
-      const scaleY = targetH / estimatedHeightMeters;
 
       // 2. Draw Detected Walls (Cyan)
       ctx.lineCap = 'round';
@@ -189,6 +205,23 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
         ctx.textBaseline = 'middle';
         ctx.fillText(room.name, rx, ry);
       });
+
+      // 5. Draw Detected Furniture (Emerald Badges)
+      (scanData.furniture || []).forEach((item) => {
+        const fx = item.position[0] * scaleX;
+        const fy = item.position[2] * scaleY;
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.rotate(-item.rotationY);
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(-12, -9, 24, 18, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
     };
 
     if (blueprintUrl) {
@@ -208,6 +241,10 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
       walls: scanData.walls,
       openings: scanData.openings,
       rooms: scanData.rooms,
+      furniture:
+        scanData.furniture && scanData.furniture.length > 0
+          ? scanData.furniture
+          : state.furniture,
       pixelsPerMeter: scanData.pixelsPerMeter,
       isCalibrated: true,
       currentMode: '2d',
@@ -217,12 +254,20 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
             url: blueprintUrl,
             opacity: 0.5,
             visible: true,
-            width: Math.round(scanData.estimatedWidthMeters * scanData.pixelsPerMeter),
-            height: Math.round(scanData.estimatedHeightMeters * scanData.pixelsPerMeter),
-            widthMeters: scanData.estimatedWidthMeters,
-            heightMeters: scanData.estimatedHeightMeters,
-            x: 0,
-            y: 0,
+            width: Math.round(
+              (scanData.alignment?.imageWidthMeters || scanData.estimatedWidthMeters) *
+                scanData.pixelsPerMeter
+            ),
+            height: Math.round(
+              (scanData.alignment?.imageHeightMeters || scanData.estimatedHeightMeters) *
+                scanData.pixelsPerMeter
+            ),
+            widthMeters:
+              scanData.alignment?.imageWidthMeters || scanData.estimatedWidthMeters,
+            heightMeters:
+              scanData.alignment?.imageHeightMeters || scanData.estimatedHeightMeters,
+            x: scanData.alignment?.imageX ?? 0,
+            y: scanData.alignment?.imageY ?? 0,
           }
         : state.backgroundImage,
       historyPast: [
@@ -316,6 +361,16 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
               {scanData.rooms.length} {getTranslation(language, 'aiDetectedRooms')}
             </span>
           </div>
+
+          {scanData.furniture && scanData.furniture.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold">
+              <Armchair className="w-3.5 h-3.5 text-emerald-500" />
+              <span>
+                {scanData.furniture.length}{' '}
+                {language === 'uz' ? 'ta mebel' : 'предм. мебели'}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold ml-auto">
             <Maximize2 className="w-3.5 h-3.5 text-slate-400" />

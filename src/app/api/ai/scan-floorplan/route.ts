@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import dns from 'node:dns';
 import https from 'node:https';
 import { URL } from 'node:url';
-import { splitWallsAtIntersections } from '@/lib/wallGeometry';
+import { rectifyAiFloorplan } from '@/lib/wallGeometry';
+import { autoFurnishFloorplan } from '@/lib/autoFurnish';
+import { getFurnitureCatalogItem } from '@/data/furniture';
+import { PlacedFurniture } from '@/types/floorplan';
 
 // Prioritize IPv4 resolution to prevent macOS IPv6 fetch / undici network drops
 try {
@@ -95,6 +98,13 @@ interface AiFloorplanResponse {
     height?: number;
     sillHeight?: number;
   }>;
+  furniture?: Array<{
+    catalogKey: string;
+    x: number;
+    y: number;
+    rotationDeg?: number;
+    roomName?: string;
+  }>;
 }
 
 export async function POST(req: NextRequest) {
@@ -148,7 +158,12 @@ Your job is to thoroughly detect:
 4. Room labels with their approximate 2D center positions and standard names in ${
       language === 'uz' ? 'Uzbek Latin' : 'Russian'
     }. Include names for auxiliary rooms (e.g. Garaj, Yozgi oshxona, Omborxona).
-5. The estimated bounding dimensions of the entire drawn property in meters.
+5. Any visible furniture items drawn in the floorplan (beds, sofas, dining tables, kitchen sets, wardrobes, desks, bathtubs, toilets):
+   - Provide "catalogKey": "double_bed" | "single_bed" | "sofa" | "dining_table" | "kitchen_set" | "wardrobe" | "desk" | "bathtub" | "toilet" | "coffee_table"
+   - "x", "y": normalized center coordinates (0.0 to 1.0)
+   - "rotationDeg": approximate rotation angle in degrees (0, 90, 180, 270)
+   - "roomName": optional room name string
+6. The estimated bounding dimensions of the entire drawn property in meters.
 
 CRITICAL RULES FOR COORDINATES:
 - Return all coordinates as NORMALIZED FLOATS strictly between 0.00 and 1.00 relative to the image bounding box.
@@ -185,6 +200,9 @@ Return ONLY valid JSON matching this schema:
   ],
   "openings": [
     { "wallIndex": number, "type": "door" | "window", "positionRatio": number, "width": number, "height": number, "sillHeight": number }
+  ],
+  "furniture": [
+    { "catalogKey": string, "x": number, "y": number, "rotationDeg": number, "roomName": string }
   ]
 }`;
 
@@ -312,85 +330,69 @@ Return ONLY valid JSON matching this schema:
       estH = estW * aspect;
     }
 
-    const pixelsPerMeter = imageWidth / estW;
+    // Calculate actual bounding box of the walls themselves in normalized [0..1] coordinates
+    // This fixes the "White Margin Shrink" bug where blueprints have white borders, margins, or caption text
+    let wallMinX = 1.0;
+    let wallMaxX = 0.0;
+    let wallMinY = 1.0;
+    let wallMaxY = 0.0;
 
-    // Convert raw walls from normalized [0..1] to real-world meters
+    (parsed.walls || []).forEach((w) => {
+      wallMinX = Math.min(wallMinX, w.startX, w.endX);
+      wallMaxX = Math.max(wallMaxX, w.startX, w.endX);
+      wallMinY = Math.min(wallMinY, w.startY, w.endY);
+      wallMaxY = Math.max(wallMaxY, w.startY, w.endY);
+    });
+
+    // Guard against degenerate bounds
+    if (wallMinX >= wallMaxX) {
+      wallMinX = 0.05;
+      wallMaxX = 0.95;
+    }
+    if (wallMinY >= wallMaxY) {
+      wallMinY = 0.05;
+      wallMaxY = 0.95;
+    }
+
+    const wallSpanX = Math.max(0.1, wallMaxX - wallMinX);
+    const wallSpanY = Math.max(0.1, wallMaxY - wallMinY);
+
+    // Coordinate mapping functions:
+    // Maps normalized image coordinates [0..1] into physical meters such that the
+    // house walls themselves span exactly [0..estW] and [0..estH]
+    const toMetersX = (normX: number) =>
+      Number((((Math.max(0, Math.min(1, normX)) - wallMinX) / wallSpanX) * estW).toFixed(3));
+    const toMetersY = (normY: number) =>
+      Number((((Math.max(0, Math.min(1, normY)) - wallMinY) / wallSpanY) * estH).toFixed(3));
+
+    // Calculate Georeferenced Background Image Placement for 1:1 Pixel-Perfect Overlay
+    const imgWidthMeters = Number((estW / wallSpanX).toFixed(3));
+    const imgHeightMeters = Number((estH / wallSpanY).toFixed(3));
+    const imgLeftMeters = Number((-(wallMinX / wallSpanX) * estW).toFixed(3));
+    const imgTopMeters = Number((-(wallMinY / wallSpanY) * estH).toFixed(3));
+    const pixelsPerMeter = Number((imageWidth / imgWidthMeters).toFixed(2));
+
+    // Convert raw walls to meters
     const rawWalls = (parsed.walls || []).map((w, index) => {
       return {
         id: `ai_wall_${Date.now()}_${index}`,
         start: {
-          x: Number((Math.max(0, Math.min(1, w.startX)) * estW).toFixed(3)),
-          y: Number((Math.max(0, Math.min(1, w.startY)) * estH).toFixed(3)),
+          x: toMetersX(w.startX),
+          y: toMetersY(w.startY),
         },
         end: {
-          x: Number((Math.max(0, Math.min(1, w.endX)) * estW).toFixed(3)),
-          y: Number((Math.max(0, Math.min(1, w.endY)) * estH).toFixed(3)),
+          x: toMetersX(w.endX),
+          y: toMetersY(w.endY),
         },
         thickness: w.thickness && w.thickness >= 0.1 ? w.thickness : 0.18,
       };
     });
 
-    // Vertex Snapping Algorithm:
-    // Snap nearby wall endpoints together (within 0.15m) so walls form clean closed loops
-    const snapThreshold = 0.15; // 15 cm
-    const snappedWalls = rawWalls.map((wall) => ({
-      ...wall,
-      start: { ...wall.start },
-      end: { ...wall.end },
-    }));
-
-    for (let i = 0; i < snappedWalls.length; i++) {
-      for (let j = i + 1; j < snappedWalls.length; j++) {
-        const w1 = snappedWalls[i];
-        const w2 = snappedWalls[j];
-
-        // w1.start to w2.start
-        if (Math.hypot(w1.start.x - w2.start.x, w1.start.y - w2.start.y) <= snapThreshold) {
-          const avgX = Number(((w1.start.x + w2.start.x) / 2).toFixed(3));
-          const avgY = Number(((w1.start.y + w2.start.y) / 2).toFixed(3));
-          w1.start.x = avgX;
-          w1.start.y = avgY;
-          w2.start.x = avgX;
-          w2.start.y = avgY;
-        }
-
-        // w1.start to w2.end
-        if (Math.hypot(w1.start.x - w2.end.x, w1.start.y - w2.end.y) <= snapThreshold) {
-          const avgX = Number(((w1.start.x + w2.end.x) / 2).toFixed(3));
-          const avgY = Number(((w1.start.y + w2.end.y) / 2).toFixed(3));
-          w1.start.x = avgX;
-          w1.start.y = avgY;
-          w2.end.x = avgX;
-          w2.end.y = avgY;
-        }
-
-        // w1.end to w2.start
-        if (Math.hypot(w1.end.x - w2.start.x, w1.end.y - w2.start.y) <= snapThreshold) {
-          const avgX = Number(((w1.end.x + w2.start.x) / 2).toFixed(3));
-          const avgY = Number(((w1.end.y + w2.start.y) / 2).toFixed(3));
-          w1.end.x = avgX;
-          w1.end.y = avgY;
-          w2.start.x = avgX;
-          w2.start.y = avgY;
-        }
-
-        // w1.end to w2.end
-        if (Math.hypot(w1.end.x - w2.end.x, w1.end.y - w2.end.y) <= snapThreshold) {
-          const avgX = Number(((w1.end.x + w2.end.x) / 2).toFixed(3));
-          const avgY = Number(((w1.end.y + w2.end.y) / 2).toFixed(3));
-          w1.end.x = avgX;
-          w1.end.y = avgY;
-          w2.end.x = avgX;
-          w2.end.y = avgY;
-        }
-      }
-    }
-
     // Convert openings and associate with mapped wall IDs
     const convertedOpenings = (parsed.openings || [])
-      .filter((op) => op.wallIndex >= 0 && op.wallIndex < snappedWalls.length)
+      .filter((op) => op.wallIndex >= 0 && op.wallIndex < rawWalls.length)
       .map((op, idx) => {
-        const wall = snappedWalls[op.wallIndex];
+        const wall = rawWalls[op.wallIndex];
         const isDoor = op.type === 'door';
         const positionRatio = Math.max(0.1, Math.min(0.9, op.positionRatio || 0.5));
 
@@ -407,23 +409,70 @@ Return ONLY valid JSON matching this schema:
         };
       });
 
-    // Auto T-Junction Splitting Algorithm:
-    // Automatically splits walls where interior partition walls meet exterior or other walls,
-    // snapping touching endpoints and remapping door/window openings
-    const splitResult = splitWallsAtIntersections(snappedWalls, convertedOpenings, 0.15);
-    const finalWalls = splitResult.walls;
-    const finalOpenings = splitResult.openings;
+    // CAD Auto-Rectifier:
+    // Orthogonal 90° snap, collinear axis alignment, endpoint snapping, and intersection splitting
+    const rectified = rectifyAiFloorplan(rawWalls, convertedOpenings);
+    const finalWalls = rectified.walls;
+    const finalOpenings = rectified.openings;
 
-    // Convert room labels
+    // Convert room labels with wall-bounding-box normalized coordinates
     const convertedRooms = (parsed.rooms || []).map((r, idx) => {
       return {
         id: `ai_room_${Date.now()}_${idx}`,
         name: r.name || (language === 'uz' ? `Xona ${idx + 1}` : `Комната ${idx + 1}`),
-        x: Number((Math.max(0, Math.min(1, r.x)) * estW).toFixed(2)),
-        y: Number((Math.max(0, Math.min(1, r.y)) * estH).toFixed(2)),
+        x: toMetersX(r.x),
+        y: toMetersY(r.y),
         color: '#6366f1',
       };
     });
+
+    // Map detected furniture symbols
+    const furnitureCatalogMap: Record<string, string> = {
+      double_bed: 'furn_bed_queen',
+      bed: 'furn_bed_queen',
+      single_bed: 'furn_bed_queen',
+      sofa: 'furn_sofa_3seater',
+      sofa_l: 'furn_sofa_3seater',
+      couch: 'furn_sofa_3seater',
+      dining_table: 'furn_dining_set',
+      table: 'furn_dining_set',
+      kitchen_set: 'furn_kitchen_island',
+      kitchen: 'furn_kitchen_island',
+      wardrobe: 'furn_wardrobe',
+      closet: 'furn_wardrobe',
+      desk: 'furn_desk',
+      study_desk: 'furn_desk',
+      bathtub: 'furn_bathtub',
+      tub: 'furn_bathtub',
+      toilet: 'furn_toilet',
+      wc: 'furn_toilet',
+      coffee_table: 'furn_coffee_table',
+      armchair: 'furn_armchair',
+    };
+
+    const detectedFurniture: PlacedFurniture[] = (parsed.furniture || []).map((f, idx) => {
+      const catalogId = furnitureCatalogMap[f.catalogKey?.toLowerCase()] || 'furn_sofa_3seater';
+      const catItem = getFurnitureCatalogItem(catalogId);
+      const rotRad = ((f.rotationDeg || 0) * Math.PI) / 180;
+      return {
+        id: `ai_furn_${Date.now()}_${idx}`,
+        catalogId: catItem.id,
+        name: catItem.name,
+        position: [toMetersX(f.x), 0, toMetersY(f.y)] as [number, number, number],
+        rotationY: rotRad,
+        scale: 1.0,
+        color: catItem.defaultColor,
+        price: catItem.price,
+      };
+    });
+
+    // Smart Fallback Auto-Furnishing:
+    // If Gemini detected fewer than 2 furniture items, auto-furnish the rooms
+    let finalFurniture = detectedFurniture;
+    if (finalFurniture.length < 2 && convertedRooms.length > 0) {
+      const autoResult = autoFurnishFloorplan(convertedRooms, finalWalls, finalFurniture);
+      finalFurniture = autoResult.newFurniture;
+    }
 
     return NextResponse.json({
       success: true,
@@ -434,6 +483,13 @@ Return ONLY valid JSON matching this schema:
         walls: finalWalls,
         openings: finalOpenings,
         rooms: convertedRooms,
+        furniture: finalFurniture,
+        alignment: {
+          imageX: imgLeftMeters,
+          imageY: imgTopMeters,
+          imageWidthMeters: imgWidthMeters,
+          imageHeightMeters: imgHeightMeters,
+        },
       },
     });
   } catch (error: unknown) {

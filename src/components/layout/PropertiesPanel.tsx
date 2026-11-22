@@ -443,7 +443,7 @@ export const PropertiesPanel: React.FC = () => {
               <div className="flex justify-between mb-1">
                 <span className="text-slate-400">Scale (Pixels/Meter)</span>
                 <span className="font-mono text-amber-300 font-semibold">
-                  {pixelsPerMeter} px/m
+                  {pixelsPerMeter.toFixed(1)} px/m
                 </span>
               </div>
               <input

@@ -12,6 +12,7 @@ import {
   formatMeters,
 } from '@/lib/geometry';
 import { estimateRoomArea } from '@/lib/wallGeometry';
+import { getFurnitureCatalogItem } from '@/data/furniture';
 import { Point2D, ViewportTransform, Wall } from '@/types/floorplan';
 
 const SNAP_RADIUS_PIXELS = 18;
@@ -27,6 +28,7 @@ export const FloorplanCanvas: React.FC = () => {
     walls,
     openings,
     rooms,
+    furniture,
     backgroundImage,
     view2DMode,
     activeTool,
@@ -623,6 +625,57 @@ export const FloorplanCanvas: React.FC = () => {
       ctx.restore();
     });
 
+    // 6. Draw Placed Furniture CAD Blocks
+    furniture.forEach((item) => {
+      const isSelected = selectedId === item.id;
+      const catItem = getFurnitureCatalogItem(item.catalogId);
+      const fx = item.position[0] * pixelsPerMeter;
+      const fy = item.position[2] * pixelsPerMeter; // position[2] is 2D Y
+      const wPx = (catItem.dimensions.width || 1.0) * (item.scale || 1.0) * pixelsPerMeter;
+      const dPx = (catItem.dimensions.depth || 0.8) * (item.scale || 1.0) * pixelsPerMeter;
+
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(-item.rotationY);
+
+      // Block outline & fill
+      ctx.beginPath();
+      ctx.roundRect(-wPx / 2, -dPx / 2, wPx, dPx, 4);
+      ctx.fillStyle = isSelected
+        ? isLight
+          ? 'rgba(16, 185, 129, 0.25)'
+          : 'rgba(52, 211, 153, 0.3)'
+        : isLight
+        ? 'rgba(241, 245, 249, 0.9)'
+        : 'rgba(30, 41, 59, 0.9)';
+      ctx.fill();
+
+      ctx.lineWidth = isSelected ? 2 : 1.2;
+      ctx.strokeStyle = isSelected ? '#10b981' : isLight ? '#94a3b8' : '#475569';
+      ctx.stroke();
+
+      // Front orientation indicator
+      ctx.beginPath();
+      ctx.moveTo(-wPx / 2 + 3, -dPx / 2 + 3);
+      ctx.lineTo(wPx / 2 - 3, -dPx / 2 + 3);
+      ctx.strokeStyle = isSelected ? '#10b981' : isLight ? '#cbd5e1' : '#334155';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Furniture label
+      if (wPx * viewport.zoom > 35 && dPx * viewport.zoom > 20) {
+        const fontSize = Math.max(8, Math.min(10, 9 / viewport.zoom));
+        ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillStyle = isSelected ? '#10b981' : isLight ? '#475569' : '#94a3b8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const shortName = item.name.length > 14 ? item.name.slice(0, 12) + '…' : item.name;
+        ctx.fillText(shortName, 0, 0);
+      }
+
+      ctx.restore();
+    });
+
     // 6. Draw Preview / Ghost while drawing a new wall
     if (activeTool === 'wall' && drawingWallStart) {
       const x1 = drawingWallStart.x * pixelsPerMeter;
@@ -800,6 +853,7 @@ export const FloorplanCanvas: React.FC = () => {
     walls,
     openings,
     rooms,
+    furniture,
     backgroundImage,
     view2DMode,
     activeTool,
@@ -1076,7 +1130,15 @@ export const FloorplanCanvas: React.FC = () => {
         }
       }
 
-      // 2. Check if clicking on a room label
+      // 2. Check if clicking on furniture
+      for (const f of furniture) {
+        if (Math.hypot(mouseWorld.x - f.position[0], mouseWorld.y - f.position[2]) < 0.8) {
+          setSelectedId(f.id);
+          return;
+        }
+      }
+
+      // 3. Check if clicking on a room label
       for (const r of rooms) {
         if (distance(mouseWorld, { x: r.x, y: r.y }) < 1.0) {
           setSelectedId(r.id);

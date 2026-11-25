@@ -206,13 +206,13 @@ Return ONLY valid JSON matching this schema:
   ]
 }`;
 
-    // Pass API key via x-goog-api-key header to generativelanguage.googleapis.com
-    // Candidate models in fallback order: 2.5-flash -> 2.0-flash -> 2.5-flash-lite -> 3-flash-preview
-    const candidateEndpoints: string[] = [
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
+    // Multi-Model Fallback Chain in exact priority order
+    const candidateModels = [
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.0-flash',
+      'gemini-2.5-pro',
+      'gemini-3-flash-preview',
     ];
 
     const payload = {
@@ -236,91 +236,97 @@ Return ONLY valid JSON matching this schema:
     };
 
     let httpRes: HttpsResponse | null = null;
+    let usedModel: string | null = null;
     let lastErrDetails = '';
-    let lastStatusCode = 500;
+    let lastStatusCode = 503;
     let lastErrorCode: string | undefined;
 
-    for (const endpoint of candidateEndpoints) {
-      try {
-        let res = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+    interface AttemptRecord {
+      model: string;
+      status: number;
+      message?: string;
+    }
+    const attempts: AttemptRecord[] = [];
 
-        // Immediate fallback on 404 (model not found)
+    for (const model of candidateModels) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+      try {
+        const res = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+        attempts.push({ model, status: res.statusCode });
+
+        // 404: Model not found -> immediately move to next model
         if (res.statusCode === 404) {
           lastErrDetails = res.data;
           lastStatusCode = res.statusCode;
-          console.warn(`Endpoint ${endpoint.slice(0, 75)} returned 404, trying next candidate...`);
+          console.warn(`[Gemini Scanner] ${model} returned 404, trying next candidate...`);
           continue;
         }
 
-        // On 503 (high demand / overloaded) or 429 (rate limit), wait 1200ms, retry once, then fallback
+        // 503 (high demand / overloaded) or 429 (rate limit): wait 1500ms and retry once
         if (res.statusCode === 503 || res.statusCode === 429) {
           console.warn(
-            `Endpoint ${endpoint.slice(0, 75)} returned ${res.statusCode}. Waiting 1200ms before retry...`
+            `[Gemini Scanner] ${model} returned ${res.statusCode}. Waiting 1500ms before retry...`
           );
-          await new Promise((r) => setTimeout(r, 1200));
+          await new Promise((r) => setTimeout(r, 1500));
 
           try {
             const retryRes = await postHttpsRequest(endpoint, payload, apiKey, 45000);
+            attempts.push({ model: `${model} (retry)`, status: retryRes.statusCode });
+
             if (retryRes.statusCode < 400) {
               httpRes = retryRes;
+              usedModel = model;
               break;
-            } else if (
-              retryRes.statusCode === 503 ||
-              retryRes.statusCode === 429 ||
-              retryRes.statusCode === 404
-            ) {
+            } else {
               lastErrDetails = retryRes.data;
               lastStatusCode = retryRes.statusCode;
               console.warn(
-                `Endpoint ${endpoint.slice(0, 75)} retry returned ${retryRes.statusCode}, falling back to next candidate...`
+                `[Gemini Scanner] ${model} retry returned ${retryRes.statusCode}, moving to next candidate...`
               );
               continue;
-            } else {
-              res = retryRes;
             }
           } catch (retryErr: unknown) {
-            console.warn(`Endpoint retry network error:`, retryErr);
+            const errText = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            attempts.push({ model: `${model} (retry error)`, status: 500, message: errText });
+            console.warn(`[Gemini Scanner] ${model} retry network error:`, errText);
             continue;
           }
         }
 
-        httpRes = res;
         if (res.statusCode < 400) {
+          httpRes = res;
+          usedModel = model;
           break;
+        } else {
+          lastErrDetails = res.data;
+          lastStatusCode = res.statusCode;
+          console.warn(`[Gemini Scanner] ${model} returned ${res.statusCode}, trying next candidate...`);
+          continue;
         }
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         lastErrorCode = code;
         lastErrDetails = err instanceof Error ? err.message : String(err);
-        console.error(`HTTPS request failed (${code}):`, lastErrDetails);
+        attempts.push({ model, status: 500, message: lastErrDetails });
+        console.error(`[Gemini Scanner] HTTPS request failed for ${model} (${code}):`, lastErrDetails);
+        continue;
       }
     }
 
     if (!httpRes || httpRes.statusCode >= 400) {
-      const status = httpRes?.statusCode || lastStatusCode || 500;
-      const rawText = httpRes?.data || lastErrDetails;
-      console.error(`Gemini API Error (${status}):`, rawText);
-
-      let parsedMsg = rawText;
-      let apiErrorCode = lastErrorCode;
-      try {
-        const json = JSON.parse(rawText);
-        if (json.error?.message) {
-          parsedMsg = json.error.message;
-        }
-        if (json.error?.status || json.error?.code) {
-          apiErrorCode = String(json.error.status || json.error.code);
-        }
-      } catch {
-        // use raw text
-      }
+      const status = httpRes?.statusCode || lastStatusCode || 503;
+      const summaryAttempts = attempts.map((a) => `${a.model} (${a.status})`).join(', ');
+      const errorMsg = `Barcha Gemini modellar vaqtincha band: ${summaryAttempts}`;
+      console.error(`Gemini API All Models Failed (${status}):`, summaryAttempts);
 
       return NextResponse.json(
         {
-          error: `Gemini API xatosi (${status}): ${parsedMsg}`,
+          error: errorMsg,
           statusCode: status,
-          errorCode: apiErrorCode,
-          raw: rawText,
+          errorCode: lastErrorCode || 'ALL_MODELS_UNAVAILABLE',
+          attempts,
+          raw: lastErrDetails,
         },
         { status }
       );
@@ -514,6 +520,7 @@ Return ONLY valid JSON matching this schema:
     return NextResponse.json({
       success: true,
       data: {
+        usedModel: usedModel || 'gemini-2.5-flash',
         estimatedWidthMeters: estW,
         estimatedHeightMeters: estH,
         pixelsPerMeter,

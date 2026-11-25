@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export interface AIScanResultData {
+  usedModel?: string;
   walls: Wall[];
   openings: Opening[];
   rooms: Room[];
@@ -322,7 +323,7 @@ export const AIScanPreviewModal: React.FC<AIScanPreviewModalProps> = ({
               <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>{getTranslation(language, 'aiPreviewTitle')}</span>
                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
-                  Gemini 2.5 Flash
+                  {scanData.usedModel || 'Gemini 2.5 Flash'}
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">

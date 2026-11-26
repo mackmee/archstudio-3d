@@ -159,6 +159,15 @@ interface FloorplanStore extends ProjectState {
   redo: () => void;
   resetProject: () => void;
   loadSamplePlan: () => void;
+  loadGeneratedVariant: (variant: {
+    title: string;
+    totalAreaSqm: number;
+    roomCounts: { bedrooms: number; living: number };
+    walls: Wall[];
+    openings: Opening[];
+    rooms: Room[];
+    furniture: PlacedFurniture[];
+  }) => void;
 
   // Cloud Project State & Actions
   currentProjectId: string | null;
@@ -993,6 +1002,33 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         laborRatePerSqm: 25,
         selectedId: null,
         selected3DTarget: null,
+      });
+    },
+
+    loadGeneratedVariant: (variant) => {
+      set({
+        projectName: `${variant.title} (${variant.totalAreaSqm} m²)`,
+        targetAreaSqm: variant.totalAreaSqm,
+        numRooms: variant.roomCounts.bedrooms + variant.roomCounts.living,
+        isCalibrated: true,
+        currentMode: '2d',
+        pixelsPerMeter: 60,
+        ceilingHeight: 2.8,
+        floorMaterialId: DEFAULT_FLOOR_MATERIAL_ID,
+        ceilingMaterialId: DEFAULT_CEILING_MATERIAL_ID,
+        walls: variant.walls,
+        openings: variant.openings,
+        rooms: variant.rooms,
+        furniture: variant.furniture,
+        customMaterialPrices: {},
+        customFurniturePrices: {},
+        wasteFactor: 0.1,
+        includeLabor: true,
+        laborRatePerSqm: 25,
+        selectedId: null,
+        selected3DTarget: null,
+        historyPast: [],
+        historyFuture: [],
       });
     },
 

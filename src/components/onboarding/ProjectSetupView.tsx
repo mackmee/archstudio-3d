@@ -6,12 +6,13 @@ import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { getTranslation } from '@/lib/i18n';
 import { AIScanPreviewModal, AIScanResultData } from '@/components/editor2d/AIScanPreviewModal';
 import { compressBlueprintImage } from '@/lib/imageCompression';
+import { generateHouseVariants, GeneratedFloorplanVariant } from '@/lib/floorplanGenerator';
+import { HouseVariantsGalleryModal } from './HouseVariantsGalleryModal';
 import {
   UploadCloud,
   FileImage,
   Sparkles,
   ArrowRight,
-  Maximize2,
   Home,
   CheckCircle2,
   Trash2,
@@ -20,6 +21,11 @@ import {
   ShieldCheck,
   Loader2,
   AlertCircle,
+  Building2,
+  BedDouble,
+  Bath,
+  Utensils,
+  Check,
 } from 'lucide-react';
 
 export const ProjectSetupView: React.FC = () => {
@@ -45,11 +51,66 @@ export const ProjectSetupView: React.FC = () => {
   const [localArea, setLocalArea] = useState(targetAreaSqm || 84);
   const [localRooms, setLocalRooms] = useState(numRooms || 2);
 
+  // Tab mode in left column: 'blueprint' (AI scan/upload) vs 'generator' (10 variants from scratch)
+  const [activeTab, setActiveTab] = useState<'blueprint' | 'generator'>('blueprint');
+
+  // Parametric House Generator state
+  const [genWidth, setGenWidth] = useState(14);
+  const [genDepth, setGenDepth] = useState(11);
+  const [genBedrooms, setGenBedrooms] = useState(3);
+  const [genBathrooms, setGenBathrooms] = useState(2);
+  const [genKitchenType, setGenKitchenType] = useState<'separate' | 'studio'>('separate');
+
+  // Optional spaces toggle chips
+  const [genIncludeLiving, setGenIncludeLiving] = useState(true);
+  const [genIncludeHallway, setGenIncludeHallway] = useState(true);
+  const [genIncludeTerrace, setGenIncludeTerrace] = useState(false);
+  const [genIncludeGarage, setGenIncludeGarage] = useState(false);
+  const [genIncludeSummerKitchen, setGenIncludeSummerKitchen] = useState(false);
+  const [genIncludeStorage, setGenIncludeStorage] = useState(false);
+  const [genIncludeOffice, setGenIncludeOffice] = useState(false);
+
+  // Variants modal state
+  const [generatedVariants, setGeneratedVariants] = useState<GeneratedFloorplanVariant[]>([]);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
   // AI Scanner state
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanData, setScanData] = useState<AIScanResultData | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Feasibility check
+  const currentGenArea = Number((genWidth * genDepth).toFixed(1));
+  const minRecommendedArea =
+    (genIncludeLiving ? 24 : 0) +
+    genBedrooms * 14 +
+    genBathrooms * 5 +
+    (genKitchenType === 'separate' ? 12 : 8) +
+    (genIncludeHallway ? 8 : 0) +
+    (genIncludeTerrace ? 12 : 0) +
+    (genIncludeGarage ? 20 : 0);
+  const isAreaTight = currentGenArea < minRecommendedArea * 0.88;
+
+  const handleGenerateHouseVariants = () => {
+    const variants = generateHouseVariants({
+      width: genWidth,
+      depth: genDepth,
+      bedrooms: genBedrooms,
+      bathrooms: genBathrooms,
+      kitchenType: genKitchenType,
+      includeLivingRoom: genIncludeLiving,
+      includeHallway: genIncludeHallway,
+      includeTerrace: genIncludeTerrace,
+      includeGarage: genIncludeGarage,
+      includeSummerKitchen: genIncludeSummerKitchen,
+      includeStorage: genIncludeStorage,
+      includeOffice: genIncludeOffice,
+      language,
+    });
+    setGeneratedVariants(variants);
+    setIsGalleryOpen(true);
+  };
 
   const handleTriggerAiScan = async () => {
     if (!backgroundImage?.url) return;
@@ -174,187 +235,419 @@ export const ProjectSetupView: React.FC = () => {
           </p>
         </div>
 
-        {/* Studio Setup Grid: Left (Blueprint Uploader) | Right (Apartment Specs) */}
+        {/* Studio Setup Grid: Left (Blueprint Uploader / House Generator) | Right (Apartment Specs) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Blueprint Upload Card */}
+          {/* Left Column: Blueprint Upload or Parametric Generator */}
           <div className="lg:col-span-7 glass-panel rounded-2xl p-6 flex flex-col justify-between shadow-xl">
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-                    <FileImage className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {getTranslation(language, 'blueprintTitle')}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {getTranslation(language, 'blueprintSubtitle')}
-                    </p>
-                  </div>
-                </div>
-
-                {backgroundImage && (
-                  <button
-                    onClick={() => setBackgroundImage(null)}
-                    className="flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 transition px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>{getTranslation(language, 'removeBlueprint')}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Upload Dropzone */}
-              {!backgroundImage ? (
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={onDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition duration-200 group ${
-                    isDragging
-                      ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20'
-                      : 'border-slate-300 dark:border-slate-700/80 hover:border-cyan-500/60 bg-white/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-900/70 shadow-xs'
+              {/* Segmented Mode Selector Bar */}
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('blueprint')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeTab === 'blueprint'
+                      ? 'bg-white dark:bg-slate-800 text-cyan-600 dark:text-cyan-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFile(e.target.files[0]);
-                      }
-                    }}
-                  />
-                  <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-600 dark:text-cyan-400 mb-4 group-hover:scale-110 group-hover:bg-cyan-500/20 transition">
-                    <UploadCloud className="w-7 h-7" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-800 dark:text-white mb-1">
-                    {getTranslation(language, 'dragDropText')}
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-                    {getTranslation(language, 'dragDropHint')}
-                  </p>
-                  <span className="text-xs font-semibold px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20 transition">
-                    {getTranslation(language, 'browseFile')}
-                  </span>
-                </div>
-              ) : (
-                /* Preview Loaded Image */
-                <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/80 p-2 shadow-xs">
-                  <div className="relative h-64 w-full flex items-center justify-center bg-slate-100 dark:bg-black/40 rounded-lg overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={backgroundImage.url}
-                      alt="Floorplan Blueprint Preview"
-                      className="max-h-full max-w-full object-contain"
-                    />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-[10px] font-mono text-cyan-700 dark:text-cyan-300 shadow-xs">
-                      {backgroundImage.width} × {backgroundImage.height} px
+                  <FileImage className="w-3.5 h-3.5" />
+                  <span>{getTranslation(language, 'tabUploadBlueprint')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('generator')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeTab === 'generator'
+                      ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md shadow-cyan-600/20'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{getTranslation(language, 'tabGenerateHouse')}</span>
+                </button>
+              </div>
+
+              {/* TAB 1: BLUEPRINT UPLOAD & AI SCAN */}
+              {activeTab === 'blueprint' ? (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                        <FileImage className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                          {getTranslation(language, 'blueprintTitle')}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {getTranslation(language, 'blueprintSubtitle')}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Animated Laser Grid Scan Overlay */}
-                    {isScanning && (
-                      <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center overflow-hidden">
-                        {/* Animated Laser Beam */}
-                        <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-scan-laser" />
-                        {/* Grid Glow Effect */}
-                        <div className="absolute inset-0 bg-[radial-gradient(#22d3ee_1px,transparent_1px)] [background-size:20px_20px] opacity-25" />
+                    {backgroundImage && (
+                      <button
+                        onClick={() => setBackgroundImage(null)}
+                        className="flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 transition px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{getTranslation(language, 'removeBlueprint')}</span>
+                      </button>
+                    )}
+                  </div>
 
-                        <div className="relative z-10 flex flex-col items-center gap-2.5 p-4 text-center">
-                          <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 shadow-xl shadow-cyan-500/30 animate-pulse">
-                            <Sparkles className="w-6 h-6" />
+                  {/* Upload Dropzone */}
+                  {!backgroundImage ? (
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragging(true);
+                      }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={onDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition duration-200 group ${
+                        isDragging
+                          ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20'
+                          : 'border-slate-300 dark:border-slate-700/80 hover:border-cyan-500/60 bg-white/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-900/70 shadow-xs'
+                      }`}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFile(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-600 dark:text-cyan-400 mb-4 group-hover:scale-110 group-hover:bg-cyan-500/20 transition">
+                        <UploadCloud className="w-7 h-7" />
+                      </div>
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-white mb-1">
+                        {getTranslation(language, 'dragDropText')}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                        {getTranslation(language, 'dragDropHint')}
+                      </p>
+                      <span className="text-xs font-semibold px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20 transition">
+                        {getTranslation(language, 'browseFile')}
+                      </span>
+                    </div>
+                  ) : (
+                    /* Preview Loaded Image */
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/80 p-2 shadow-xs">
+                      <div className="relative h-64 w-full flex items-center justify-center bg-slate-100 dark:bg-black/40 rounded-lg overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={backgroundImage.url}
+                          alt="Floorplan Blueprint Preview"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-[10px] font-mono text-cyan-700 dark:text-cyan-300 shadow-xs">
+                          {backgroundImage.width} × {backgroundImage.height} px
+                        </div>
+
+                        {/* Animated Laser Grid Scan Overlay */}
+                        {isScanning && (
+                          <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center overflow-hidden">
+                            <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-scan-laser" />
+                            <div className="absolute inset-0 bg-[radial-gradient(#22d3ee_1px,transparent_1px)] [background-size:20px_20px] opacity-25" />
+
+                            <div className="relative z-10 flex flex-col items-center gap-2.5 p-4 text-center">
+                              <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 shadow-xl shadow-cyan-500/30 animate-pulse">
+                                <Sparkles className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-white tracking-wide">
+                                  {getTranslation(language, 'aiScanning')}
+                                </p>
+                                <p className="text-[11px] text-cyan-300 mt-0.5">
+                                  {getTranslation(language, 'aiScanningSub')}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs font-bold text-white tracking-wide">
-                              {getTranslation(language, 'aiScanning')}
-                            </p>
-                            <p className="text-[11px] text-cyan-300 mt-0.5">
-                              {getTranslation(language, 'aiScanningSub')}
-                            </p>
+                        )}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 px-1">
+                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                          <CheckCircle2 className="w-4 h-4" />
+                          {getTranslation(language, 'blueprintAttached')}
+                        </span>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-cyan-600 dark:text-cyan-400 hover:underline font-semibold"
+                        >
+                          {getTranslation(language, 'replaceBlueprint')}
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleFile(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Gemini Vision Scanner Card */}
+                  {backgroundImage && (
+                    <div className="mt-3.5 p-3.5 rounded-xl bg-gradient-to-r from-cyan-500/10 via-indigo-500/10 to-blue-500/10 border border-cyan-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20 shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                              {getTranslation(language, 'aiScanBtn')}
+                            </h4>
+                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
+                              Gemini Vision AI
+                            </span>
                           </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {getTranslation(language, 'aiScanTooltip')}
+                          </p>
                         </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 px-1">
-                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <CheckCircle2 className="w-4 h-4" />
-                      {getTranslation(language, 'blueprintAttached')}
-                    </span>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-cyan-600 dark:text-cyan-400 hover:underline font-semibold"
-                    >
-                      {getTranslation(language, 'replaceBlueprint')}
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFile(e.target.files[0]);
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
 
-              {/* AI Gemini Vision Scanner Card */}
-              {backgroundImage && (
-                <div className="mt-3.5 p-3.5 rounded-xl bg-gradient-to-r from-cyan-500/10 via-indigo-500/10 to-blue-500/10 border border-cyan-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20 shrink-0">
-                      <Sparkles className="w-4 h-4" />
+                      <button
+                        onClick={handleTriggerAiScan}
+                        disabled={isScanning}
+                        className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 via-indigo-600 to-blue-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
+                      >
+                        {isScanning ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>{getTranslation(language, 'aiScanning')}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>{getTranslation(language, 'aiScanBtn')}</span>
+                          </>
+                        )}
+                      </button>
                     </div>
+                  )}
+
+                  {scanError && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{scanError}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* TAB 2: PARAMETRIC HOUSE GENERATOR ("NOLDAN 10 TA LOYIHA") */
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                          {getTranslation(language, 'generatorTitle')}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {getTranslation(language, 'generatorSubtitle')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
+                      {currentGenArea} m²
+                    </span>
+                  </div>
+
+                  {/* Footprint Sliders (Width & Depth) */}
+                  <div className="p-4 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-4">
+                    {/* Width */}
                     <div>
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                          {getTranslation(language, 'aiScanBtn')}
-                        </h4>
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30">
-                          Gemini Vision AI
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {getTranslation(language, 'houseWidthLabel')}
+                        </span>
+                        <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">
+                          {genWidth.toFixed(1)} m
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {getTranslation(language, 'aiScanTooltip')}
-                      </p>
+                      <input
+                        type="range"
+                        min="8"
+                        max="24"
+                        step="0.5"
+                        value={genWidth}
+                        onChange={(e) => setGenWidth(parseFloat(e.target.value))}
+                        className="w-full accent-cyan-500 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Depth */}
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {getTranslation(language, 'houseDepthLabel')}
+                        </span>
+                        <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">
+                          {genDepth.toFixed(1)} m
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="8"
+                        max="20"
+                        step="0.5"
+                        value={genDepth}
+                        onChange={(e) => setGenDepth(parseFloat(e.target.value))}
+                        className="w-full accent-cyan-500 cursor-pointer"
+                      />
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleTriggerAiScan}
-                    disabled={isScanning}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 via-indigo-600 to-blue-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
-                  >
-                    {isScanning ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>{getTranslation(language, 'aiScanning')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>{getTranslation(language, 'aiScanBtn')}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+                  {/* Core Rooms: Bedrooms, Bathrooms, Kitchen */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Bedrooms */}
+                    <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        <BedDouble className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{getTranslation(language, 'bedroomsCountLabel')}</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setGenBedrooms(n)}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition border cursor-pointer ${
+                              genBedrooms === n
+                                ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              {scanError && (
-                <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{scanError}</span>
+                    {/* Bathrooms */}
+                    <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        <Bath className="w-3.5 h-3.5 text-cyan-500" />
+                        <span>{getTranslation(language, 'bathroomsCountLabel')}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[1, 2, 3].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setGenBathrooms(n)}
+                            className={`py-1.5 text-xs font-bold rounded-lg transition border cursor-pointer ${
+                              genBathrooms === n
+                                ? 'bg-cyan-600 text-white border-cyan-500 shadow-sm'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kitchen Style */}
+                  <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <Utensils className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>{getTranslation(language, 'kitchenStyleLabel')}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setGenKitchenType('separate')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition border cursor-pointer ${
+                          genKitchenType === 'separate'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {getTranslation(language, 'kitchenSeparate')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGenKitchenType('studio')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition border cursor-pointer ${
+                          genKitchenType === 'studio'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {getTranslation(language, 'kitchenStudio')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Optional Spaces Toggle Chips */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                      {getTranslation(language, 'optionalSpacesLabel')}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'liv', label: getTranslation(language, 'optLiving'), state: genIncludeLiving, setter: setGenIncludeLiving },
+                        { id: 'hal', label: getTranslation(language, 'optHallway'), state: genIncludeHallway, setter: setGenIncludeHallway },
+                        { id: 'ter', label: getTranslation(language, 'optTerrace'), state: genIncludeTerrace, setter: setGenIncludeTerrace },
+                        { id: 'gar', label: getTranslation(language, 'optGarage'), state: genIncludeGarage, setter: setGenIncludeGarage },
+                        { id: 'sum', label: getTranslation(language, 'optSummerKitchen'), state: genIncludeSummerKitchen, setter: setGenIncludeSummerKitchen },
+                        { id: 'sto', label: getTranslation(language, 'optStorage'), state: genIncludeStorage, setter: setGenIncludeStorage },
+                        { id: 'off', label: getTranslation(language, 'optOffice'), state: genIncludeOffice, setter: setGenIncludeOffice },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => item.setter(!item.state)}
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition border flex items-center gap-1.5 cursor-pointer ${
+                            item.state
+                              ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/50 shadow-xs'
+                              : 'bg-white dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                          }`}
+                        >
+                          {item.state && <Check className="w-3 h-3 text-cyan-500" />}
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Feasibility Alert Banner */}
+                  {isAreaTight && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+                      <span>{getTranslation(language, 'tightAreaWarning')}</span>
+                    </div>
+                  )}
+
+                  {/* Generate 10 Variants Button */}
+                  <button
+                    type="button"
+                    onClick={handleGenerateHouseVariants}
+                    className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-cyan-600 via-indigo-600 to-blue-600 hover:from-cyan-500 hover:to-indigo-500 transition shadow-lg shadow-cyan-600/25 flex items-center justify-center gap-2 group cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />
+                    <span>{getTranslation(language, 'generate10VariantsBtn')}</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                  </button>
                 </div>
               )}
             </div>
@@ -374,7 +667,7 @@ export const ProjectSetupView: React.FC = () => {
                   loadSamplePlan();
                   setCurrentMode('2d');
                 }}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-800 dark:text-amber-300 border border-amber-500/40 transition shadow-xs"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-800 dark:text-amber-300 border border-amber-500/40 transition shadow-xs cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                 <span>{getTranslation(language, 'loadSampleApartment')}</span>
@@ -429,7 +722,7 @@ export const ProjectSetupView: React.FC = () => {
                     key={h}
                     type="button"
                     onClick={() => setLocalCeiling(h)}
-                    className={`text-xs py-1.5 rounded-lg font-semibold transition border ${
+                    className={`text-xs py-1.5 rounded-lg font-semibold transition border cursor-pointer ${
                       Math.abs(localCeiling - h) < 0.01
                         ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/50 shadow-xs'
                         : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
@@ -450,26 +743,25 @@ export const ProjectSetupView: React.FC = () => {
               />
             </div>
 
-            {/* Field 3: Target Area */}
+            {/* Field 3: Estimated Area */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Maximize2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {getTranslation(language, 'estimatedAreaLabel')}
                 </label>
-                <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-300">
+                <span className="text-xs font-mono font-bold text-cyan-600 dark:text-cyan-300">
                   {localArea} m²
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-2 mb-2">
-                {[45, 65, 84, 120].map((area) => (
+                {[54, 75, 84, 120].map((area) => (
                   <button
                     key={area}
                     type="button"
                     onClick={() => setLocalArea(area)}
-                    className={`text-xs py-1.5 rounded-lg font-semibold transition border ${
+                    className={`text-xs py-1.5 rounded-lg font-semibold transition border cursor-pointer ${
                       localArea === area
-                        ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/50 shadow-xs'
+                        ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/50 shadow-xs'
                         : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
@@ -477,26 +769,42 @@ export const ProjectSetupView: React.FC = () => {
                   </button>
                 ))}
               </div>
+              <input
+                type="range"
+                min="30"
+                max="350"
+                step="2"
+                value={localArea}
+                onChange={(e) => setLocalArea(parseInt(e.target.value, 10))}
+                className="w-full accent-cyan-500 cursor-pointer"
+              />
             </div>
 
-            {/* Field 4: Number of Rooms */}
+            {/* Field 4: Room Count */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 {getTranslation(language, 'roomCountLabel')}
               </label>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-5 gap-2">
                 {[1, 2, 3, 4, 5].map((count) => (
                   <button
                     key={count}
                     type="button"
                     onClick={() => setLocalRooms(count)}
-                    className={`text-xs py-1.5 rounded-lg font-semibold transition border ${
+                    className={`py-2 text-xs font-bold rounded-xl transition border flex flex-col items-center justify-center cursor-pointer ${
                       localRooms === count
-                        ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/50 shadow-xs'
+                        ? 'bg-gradient-to-b from-indigo-500/20 to-indigo-600/30 text-indigo-700 dark:text-indigo-300 border-indigo-500 shadow-sm'
                         : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
-                    {count === 1 ? getTranslation(language, 'studio') : `${count}`}
+                    <span className="text-sm font-extrabold">{count}</span>
+                    <span className="text-[10px] opacity-80">
+                      {count === 1
+                        ? getTranslation(language, 'studio')
+                        : language === 'ru'
+                        ? `${count}-комн.`
+                        : `${count} xonali`}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -517,7 +825,7 @@ export const ProjectSetupView: React.FC = () => {
             {/* Primary Action Button */}
             <button
               onClick={handleContinue}
-              className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition group"
+              className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition group cursor-pointer"
             >
               <span>{getTranslation(language, 'continueTo2D')}</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
@@ -532,6 +840,19 @@ export const ProjectSetupView: React.FC = () => {
         onClose={() => setIsPreviewOpen(false)}
         scanData={scanData}
         blueprintUrl={backgroundImage?.url}
+      />
+
+      {/* 10-Variant Architectural House Generator Gallery Modal */}
+      <HouseVariantsGalleryModal
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+        variants={generatedVariants}
+        selectedParams={{
+          width: genWidth,
+          depth: genDepth,
+          bedrooms: genBedrooms,
+          bathrooms: genBathrooms,
+        }}
       />
     </div>
   );

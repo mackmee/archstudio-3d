@@ -149,6 +149,24 @@ export const translations = {
     walkthroughHint: 'WASD / Strelkalar — harakatlanish · Sichqoncha — qarash · Shift — yugurish',
     exitWalkthrough: 'Sayrni Tugatish',
 
+    // Stage 8B: Luxury ArchViz Lighting & Presets
+    timeOfDayLabel: 'Vaqt / Quyosh holati',
+    timeMorning: 'Tong (06:30)',
+    timeNoon: 'Kunduz (13:00)',
+    timeGoldenHour: 'Quyosh botishi (18:45)',
+    timeNight: 'Tun (22:00)',
+    timeOfDayTooltip: 'Kun vaqti va quyosh burchagini o‘zgartirish',
+    designPresetsTitle: 'Tayyor Dizayn Uslublari',
+    designPresetsSubtitle: 'Butun uyni 1-bosishda hashamatli dizaynga o‘tkazing',
+    presetWarmMinimalism: 'Issiq Minimalizm',
+    presetWarmMinimalismDesc: 'Iliq kremli devorlar, ochiq eman parket',
+    presetDubaiLuxury: 'Hashamatli Dubai',
+    presetDubaiLuxuryDesc: 'Rim travertini, marmar va oqshom jilosi',
+    presetScandiBright: 'Yorug‘ Skandinaviya',
+    presetScandiBrightDesc: 'Qor-oq mat devor, tabiiy quyosh nuri',
+    presetModernLoft: 'Zamonaviy Loft',
+    presetModernLoftDesc: 'G‘ishtli loft devor, dudlangan yong‘oq pol',
+
     // 3D Design Sidebar
     tabMaterials: 'Materiallar',
     tabFurniture: 'Mebel & Jihoz',
@@ -502,6 +520,24 @@ export const translations = {
     proceedToEstimate: 'Смета (BOM) →',
     walkthroughHint: 'WASD / Стрелки — движение · Мышь — обзор · Shift — бег',
     exitWalkthrough: 'Выйти из прогулки',
+
+    // Stage 8B: Luxury ArchViz Lighting & Presets
+    timeOfDayLabel: 'Время / Положение солнца',
+    timeMorning: 'Утро (06:30)',
+    timeNoon: 'День (13:00)',
+    timeGoldenHour: 'Закат (18:45)',
+    timeNight: 'Ночь (22:00)',
+    timeOfDayTooltip: 'Изменить время суток и угол солнца',
+    designPresetsTitle: 'Готовые Стили Интерьера',
+    designPresetsSubtitle: 'Преобразите весь дом в 1 клик',
+    presetWarmMinimalism: 'Теплый Минимализм',
+    presetWarmMinimalismDesc: 'Теплый грейж, светлый дубовый паркет',
+    presetDubaiLuxury: 'Дубайская Роскошь',
+    presetDubaiLuxuryDesc: 'Римский травертин, мрамор и вечернее золото',
+    presetScandiBright: 'Светлая Скандинавия',
+    presetScandiBrightDesc: 'Белоснежные стены, натуральный дуб',
+    presetModernLoft: 'Темный Лофт',
+    presetModernLoftDesc: 'Кирпичная кладка, темный орех паркет',
 
     // 3D Design Sidebar
     tabMaterials: 'Материалы',

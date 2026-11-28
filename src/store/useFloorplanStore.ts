@@ -16,6 +16,7 @@ import {
   ProjectMetadata,
   ReadinessChecklist,
   MarketPresetType,
+  InteriorPresetKey,
 } from '@/types/floorplan';
 import { distance } from '@/lib/geometry';
 import { splitWallsAtIntersections, getRoomBoundingWalls } from '@/lib/wallGeometry';
@@ -86,6 +87,8 @@ interface FloorplanStore extends ProjectState {
   toggleRoomLabels3D: () => void;
   setCameraMode3D: (mode: 'orbit' | 'walkthrough') => void;
   setLightingPreset: (preset: LightingPreset) => void;
+  setTimeOfDay: (time: number) => void;
+  applyInteriorPreset: (presetKey: InteriorPresetKey) => void;
   toggleCutawayMode: () => void;
   setFocusedRoomId: (id: string | null) => void;
   toggleFovMode: () => void;
@@ -346,6 +349,7 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
       showRoomLabels: true,
       cameraMode: 'orbit',
       lightingPreset: 'day',
+      timeOfDay: 13.0,
       cutawayMode: false,
       focusedRoomId: null,
       fovMode: 'wide',
@@ -373,9 +377,92 @@ export const useFloorplanStore = create<FloorplanStore>((set, get) => {
         view3dSettings: { ...s.view3dSettings, cameraMode: mode },
       })),
     setLightingPreset: (preset) =>
+      set((s) => {
+        let timeOfDay = 13.0;
+        if (preset === 'sunset') timeOfDay = 18.75;
+        if (preset === 'night') timeOfDay = 22.0;
+        return {
+          view3dSettings: {
+            ...s.view3dSettings,
+            lightingPreset: preset,
+            timeOfDay,
+          },
+        };
+      }),
+    setTimeOfDay: (time) =>
+      set((s) => {
+        let preset: LightingPreset = 'day';
+        if (time < 7.5 || (time >= 17.0 && time < 19.8)) {
+          preset = 'sunset';
+        } else if (time >= 19.8) {
+          preset = 'night';
+        }
+        return {
+          view3dSettings: {
+            ...s.view3dSettings,
+            timeOfDay: time,
+            lightingPreset: preset,
+          },
+        };
+      }),
+    applyInteriorPreset: (presetKey) => {
+      const state = get();
+      pushHistory();
+
+      let wallMatId = 'paint_warm_greige';
+      let floorMatId = 'floor_natural_oak';
+      let ceilMatId = 'ceil_warm_cream';
+      let timeOfDay = 18.25; // 18:15 (Golden hour)
+      let lightingPreset: LightingPreset = 'sunset';
+
+      switch (presetKey) {
+        case 'warm_minimalism':
+          wallMatId = 'paint_warm_greige';
+          floorMatId = 'floor_natural_oak';
+          ceilMatId = 'ceil_warm_cream';
+          timeOfDay = 18.25;
+          lightingPreset = 'sunset';
+          break;
+        case 'dubai_luxury':
+          wallMatId = 'wp_venetian_plaster';
+          floorMatId = 'floor_warm_travertine';
+          ceilMatId = 'ceil_matte_white';
+          timeOfDay = 19.25;
+          lightingPreset = 'sunset';
+          break;
+        case 'scandi_bright':
+          wallMatId = 'paint_pure_white';
+          floorMatId = 'floor_natural_oak';
+          ceilMatId = 'ceil_matte_white';
+          timeOfDay = 12.5;
+          lightingPreset = 'day';
+          break;
+        case 'modern_loft':
+          wallMatId = 'wp_exposed_brick';
+          floorMatId = 'floor_walnut_herringbone';
+          ceilMatId = 'ceil_matte_white';
+          timeOfDay = 21.5;
+          lightingPreset = 'night';
+          break;
+      }
+
+      const updatedWalls = state.walls.map((w) => ({
+        ...w,
+        materialLeftId: wallMatId,
+        materialRightId: wallMatId,
+      }));
+
       set((s) => ({
-        view3dSettings: { ...s.view3dSettings, lightingPreset: preset },
-      })),
+        walls: updatedWalls,
+        floorMaterialId: floorMatId,
+        ceilingMaterialId: ceilMatId,
+        view3dSettings: {
+          ...s.view3dSettings,
+          timeOfDay,
+          lightingPreset,
+        },
+      }));
+    },
     toggleCutawayMode: () =>
       set((s) => ({
         view3dSettings: { ...s.view3dSettings, cutawayMode: !s.view3dSettings.cutawayMode },

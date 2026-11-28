@@ -11,6 +11,7 @@ import {
   getMaterialsByCategory,
   getMaterialById,
 } from '@/data/materials';
+import { InteriorPresetKey } from '@/types/floorplan';
 import {
   FurnitureCategory,
   FURNITURE_CATALOG,
@@ -42,6 +43,7 @@ export const DesignSidebar: React.FC = () => {
     setWallMaterial,
     applyMaterialToAllWalls,
     applyMaterialToRoom,
+    applyInteriorPreset,
     view3dSettings,
     floorMaterialId,
     setFloorMaterial,
@@ -329,6 +331,100 @@ export const DesignSidebar: React.FC = () => {
         {/* ============================================================ */}
         {activeTab === 'materials' && (
           <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-150">
+            {/* 1-Click Luxury Interior Design Presets */}
+            <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-b from-indigo-500/10 via-amber-500/5 to-transparent shrink-0 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-xs font-bold text-slate-900 dark:text-white">
+                    {getTranslation(language, 'designPresetsTitle')}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  1-Click
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  {
+                    id: 'warm_minimalism' as InteriorPresetKey,
+                    title: getTranslation(language, 'presetWarmMinimalism'),
+                    desc: getTranslation(language, 'presetWarmMinimalismDesc'),
+                    wallColor: '#e2dcd5',
+                    floorColor: '#d4b996',
+                    timeLabel: '18:15',
+                  },
+                  {
+                    id: 'dubai_luxury' as InteriorPresetKey,
+                    title: getTranslation(language, 'presetDubaiLuxury'),
+                    desc: getTranslation(language, 'presetDubaiLuxuryDesc'),
+                    wallColor: '#cbd5e1',
+                    floorColor: '#e6ded1',
+                    timeLabel: '19:15',
+                  },
+                  {
+                    id: 'scandi_bright' as InteriorPresetKey,
+                    title: getTranslation(language, 'presetScandiBright'),
+                    desc: getTranslation(language, 'presetScandiBrightDesc'),
+                    wallColor: '#f8fafc',
+                    floorColor: '#d4b996',
+                    timeLabel: '12:30',
+                  },
+                  {
+                    id: 'modern_loft' as InteriorPresetKey,
+                    title: getTranslation(language, 'presetModernLoft'),
+                    desc: getTranslation(language, 'presetModernLoftDesc'),
+                    wallColor: '#9a3412',
+                    floorColor: '#5c4033',
+                    timeLabel: '21:30',
+                  },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      applyInteriorPreset(preset.id);
+                      setFeedbackMsg(
+                        `✓ ${preset.title} ${
+                          language === 'uz'
+                            ? 'butun uyga muvaffaqiyatli qo‘llandi!'
+                            : 'успешно применен ко всему дому!'
+                        }`
+                      );
+                      setTimeout(() => setFeedbackMsg(null), 3500);
+                    }}
+                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 hover:border-amber-500/50 hover:bg-amber-500/5 text-left transition flex flex-col justify-between group cursor-pointer shadow-xs"
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center -space-x-1.5">
+                        <div
+                          className="w-4 h-4 rounded-full border border-white dark:border-slate-800 shadow-xs"
+                          style={{ backgroundColor: preset.wallColor }}
+                          title="Wall"
+                        />
+                        <div
+                          className="w-4 h-4 rounded-full border border-white dark:border-slate-800 shadow-xs"
+                          style={{ backgroundColor: preset.floorColor }}
+                          title="Floor"
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {preset.timeLabel}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 block line-clamp-1">
+                        {preset.title}
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                        {preset.desc}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Target Inspector Card */}
             <div className="p-3 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/60 shrink-0 space-y-2.5">
               <div className="flex items-center justify-between text-xs">

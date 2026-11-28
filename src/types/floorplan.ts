@@ -92,12 +92,14 @@ export interface ReadinessChecklist {
 
 export type LightingPreset = 'day' | 'sunset' | 'night';
 export type MarketPresetType = 'standard' | 'premium';
+export type InteriorPresetKey = 'warm_minimalism' | 'dubai_luxury' | 'scandi_bright' | 'modern_loft';
 
 export interface View3DSettings {
   showCeiling: boolean;
   showRoomLabels: boolean;
   cameraMode: 'orbit' | 'walkthrough';
   lightingPreset: LightingPreset;
+  timeOfDay: number; // 5.5 to 23.5 (e.g. 13.0 = 13:00)
   cutawayMode: boolean;
   focusedRoomId: string | null;
   fovMode: 'standard' | 'wide'; // Standard (55°) vs Wide (70-72°)
